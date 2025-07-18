@@ -30,6 +30,11 @@
 - `UseZodGuard` - alias for `@UseGuards(new ZodGuard(source, schema))`
 - `ZodValidationException` - BadRequestException extended with Zod errors
 - `zodToOpenAPI` - create OpenAPI declarations from Zod schemas
+- **GraphQL support** ✨
+  - `@ZodObjectType` - create GraphQL ObjectTypes from Zod schemas (minimal approach)
+  - `@ZodInputType` - create GraphQL InputTypes from Zod schemas (minimal approach)
+  - Automatic field generation from Zod schema with descriptions
+  - Drop-in replacement for `@ObjectType` and `@InputType` from `@nestjs/graphql`
 - OpenAPI support
   - `@nestjs/swagger` integration using the patch
   - `zodToOpenAPI` - generate highly accurate Swagger Schema
@@ -53,6 +58,7 @@ Peer dependencies:
 - `@nestjs/common` - `>= 8.0.0` (required on server side)
 - `@nestjs/core` - `>= 8.0.0` (required on server side)
 - `@nestjs/swagger` - `>= 5.0.0` (only when using `patchNestJsSwagger`)
+- `@nestjs/graphql` - `>= 9.0.0` (only when using GraphQL decorators)
 
 All peer dependencies are marked as optional for better client side usage, but you need to install required ones when using `nestjs-zod` on server side.
 
@@ -68,6 +74,12 @@ All peer dependencies are marked as optional for better client side usage, but y
   - [Creating custom guard](#creating-custom-guard)
 - [Validation Exceptions](#validation-exceptions)
 - [Using ZodSerializerInterceptor](#using-zodserializerinterceptor-for-output-validation)
+- **[GraphQL support](#graphql-support)** ✨
+  - [Setup](#graphql-setup)
+  - [Creating GraphQL types with @ZodObjectType](#creating-graphql-types-with-zodobjecttype)
+  - [Creating GraphQL inputs with @ZodInputType](#creating-graphql-inputs-with-zodinputtype)
+  - [Using in resolvers](#using-in-resolvers)
+  - [Migration from @ObjectType/@InputType](#migration-from-objecttypeinputtype)
 - [Extended Zod](#extended-zod)
   - [ZodDateString](#zoddatestring)
   - [ZodPassword](#zodpassword)
@@ -359,6 +371,189 @@ if (exception instanceof ZodSerializationException) {
 }
 ```
 See the example app [here](/packages/example/src/http-exception.filter.ts) for more information.
+
+## GraphQL support
+
+`nestjs-zod` provides seamless GraphQL integration with minimal decorators that automatically generate GraphQL types and fields from your Zod schemas.
+
+### GraphQL Setup
+
+Prerequisites:
+
+- `@nestjs/graphql` with version `^9.0.0` or higher installed
+- GraphQL driver (Apollo or Mercurius) configured in your NestJS application
+
+The decorators will automatically detect and integrate with your existing GraphQL setup.
+
+### Creating GraphQL types with @ZodObjectType
+
+Use `@ZodObjectType` to create GraphQL ObjectTypes from your Zod schemas:
+
+```ts
+import { ZodObjectType } from 'nestjs-zod'
+import { z } from 'zod'
+
+// Define your Zod schema
+const PostSchema = z.object({
+  id: z.number().describe('The unique identifier of the post'),
+  title: z.string().describe('The title of the post'),
+  content: z.string().describe('The main content of the post'),
+  authorId: z.number().describe('The identifier of the post author'),
+})
+
+// Create GraphQL ObjectType with minimal decorator
+@ZodObjectType(PostSchema)
+export class PostDto {}
+```
+
+This is equivalent to the traditional NestJS GraphQL approach, but with **75% less code**:
+
+```ts
+// Traditional NestJS GraphQL (verbose)
+@ObjectType('Post')
+export class PostDto {
+  @Field()
+  id: number
+
+  @Field({ description: 'The title of the post' })
+  title: string
+
+  @Field({ description: 'The main content of the post' })
+  content: string
+
+  @Field({ description: 'The identifier of the post author' })
+  authorId: number
+}
+
+// vs. nestjs-zod (minimal)
+@ZodObjectType(PostSchema)
+export class PostDto {}
+```
+
+### Creating GraphQL inputs with @ZodInputType
+
+Use `@ZodInputType` to create GraphQL InputTypes from your Zod schemas:
+
+```ts
+import { ZodInputType } from 'nestjs-zod'
+import { z } from 'zod'
+
+const CreatePostSchema = z.object({
+  title: z.string().describe('The title of the post'),
+  content: z.string().describe('The main content of the post'),
+  authorId: z.number().describe('The identifier of the post author'),
+})
+
+// Create GraphQL InputType with minimal decorator
+@ZodInputType(CreatePostSchema)
+export class CreatePostInputDto {}
+```
+
+### Using in resolvers
+
+Use your decorated DTOs in GraphQL resolvers just like traditional NestJS GraphQL classes:
+
+```ts
+import { Resolver, Query, Mutation, Args } from '@nestjs/graphql'
+
+@Resolver(() => PostDto)
+export class PostsResolver {
+  @Query(() => [PostDto])
+  async getPosts(): Promise<Post[]> {
+    return this.postsService.findAll()
+  }
+
+  @Query(() => PostDto, { nullable: true })
+  async getPost(@Args('id', { type: () => Int }) id: number): Promise<Post | null> {
+    return this.postsService.findOne(id)
+  }
+
+  @Mutation(() => PostDto)
+  async createPost(
+    @Args('input', { type: () => CreatePostInputDto }) input: CreatePostInputDto
+  ): Promise<Post> {
+    return this.postsService.create(input)
+  }
+}
+```
+
+### Key benefits
+
+- **Minimal boilerplate**: Just 2 lines per DTO (`@decorator` + `export class`)
+- **Automatic field generation**: All fields and descriptions auto-generated from Zod schema
+- **Type safety**: Full TypeScript support with IntelliSense
+- **Single source of truth**: Define schema once, use everywhere (REST + GraphQL)
+- **Drop-in replacement**: Perfect compatibility with existing `@ObjectType`/`@InputType` usage
+- **Validation included**: Automatic request validation using the same Zod schema
+
+### Advanced usage
+
+You can still provide explicit names and options when needed:
+
+```ts
+// With explicit GraphQL type name
+@ZodObjectType(PostSchema, 'Post', { 
+  description: 'A blog post entity' 
+})
+export class PostDto {}
+
+// With explicit InputType name
+@ZodInputType(CreatePostSchema, 'CreatePostInput', { 
+  description: 'Input for creating a new post' 
+})
+export class CreatePostInputDto {}
+```
+
+But the minimal approach is recommended for cleaner code:
+
+```ts
+// ✅ Recommended: Minimal approach
+@ZodObjectType(PostSchema)
+export class PostDto {}
+
+@ZodInputType(CreatePostSchema)
+export class CreatePostInputDto {}
+```
+
+### Migration from @ObjectType/@InputType
+
+Migrating from traditional NestJS GraphQL is straightforward:
+
+**Before:**
+```ts
+@ObjectType('Post')
+export class PostDto {
+  @Field()
+  id: number
+
+  @Field({ description: 'The title' })
+  title: string
+
+  @Field({ description: 'The content' })
+  content: string
+}
+```
+
+**After:**
+```ts
+// 1. Define your Zod schema (if you don't have one)
+const PostSchema = z.object({
+  id: z.number(),
+  title: z.string().describe('The title'),
+  content: z.string().describe('The content'),
+})
+
+// 2. Replace @ObjectType with @ZodObjectType
+@ZodObjectType(PostSchema)
+export class PostDto {}
+```
+
+**Benefits of migration:**
+- Remove all `@Field()` decorators
+- Remove type annotations
+- Centralize validation and type definition in Zod schema
+- Get automatic field descriptions from `.describe()`
+- Reduce code by ~75%
 
 ## Extended Zod
 

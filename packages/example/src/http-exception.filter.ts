@@ -6,12 +6,12 @@ import { ZodSerializationException } from 'nestjs-zod';
 export class HttpExceptionFilter extends BaseExceptionFilter {
     private readonly logger = new Logger(HttpExceptionFilter.name);
 
-    catch(exception: HttpException, host: ArgumentsHost) {
+    catch(exception: HttpException | ZodSerializationException, host: ArgumentsHost) {
         if (exception instanceof ZodSerializationException) {
             const zodError = exception.getZodError();
             this.logger.error(`ZodSerializationException: ${zodError.message}`);
         }
 
-        super.catch(exception, host);
+        super.catch(exception as HttpException, host);
     }
 }

@@ -1,85 +1,158 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# NestJS Zod Example
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+This example demonstrates the complete usage of `nestjs-zod` with both REST and GraphQL APIs, showcasing the minimal decorator approach for unified schema validation.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Features Demonstrated
 
-## Description
+- ✨ **Minimal GraphQL Decorators**: `@ZodObjectType` and `@ZodInputType`
+- 🔄 **Unified DTOs**: Single schema for both REST and GraphQL
+- 🎯 **Automatic Field Generation**: Auto-generated GraphQL fields from Zod schemas
+- 📝 **Automatic Descriptions**: Field descriptions from Zod `.describe()`
+- 🛡️ **Validation**: Request validation using Zod schemas
+- 📚 **Swagger Integration**: OpenAPI documentation generation
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Quick Start
 
 ```bash
+# Install dependencies
 $ pnpm install
+
+# Start the development server
+$ pnpm run start:dev
 ```
 
-## Compile and run the project
+The application will be available at:
+- **REST API**: http://localhost:3000
+- **GraphQL Playground**: http://localhost:3000/graphql
+- **Swagger Docs**: http://localhost:3000/api
+
+## Example Code
+
+### Zod Schema (Single Source of Truth)
+
+```ts
+import { z } from 'zod'
+
+export const PostSchema = z.object({
+  id: z.number().describe('The unique identifier of the post'),
+  title: z.string().describe('The title of the post'),
+  content: z.string().describe('The main content of the post'),
+  authorId: z.number().describe('The identifier of the post author'),
+})
+
+export const CreatePostSchema = z.object({
+  title: z.string().describe('The title of the post'),
+  content: z.string().describe('The main content of the post'),
+  authorId: z.number().describe('The identifier of the post author'),
+})
+```
+
+### Minimal GraphQL DTOs
+
+```ts
+import { ZodObjectType, ZodInputType } from 'nestjs-zod'
+
+// Just 2 lines per DTO! 🎉
+@ZodObjectType(PostSchema)
+export class PostDto {}
+
+@ZodInputType(CreatePostSchema)
+export class CreatePostInputDto {}
+```
+
+### GraphQL Resolver
+
+```ts
+@Resolver(() => PostDto)
+export class PostsResolver {
+  @Query(() => [PostDto])
+  async getPosts(): Promise<Post[]> {
+    return this.postsService.findAll()
+  }
+
+  @Mutation(() => PostDto)
+  async createPost(
+    @Args('input', { type: () => CreatePostInputDto }) input: CreatePostInputDto
+  ): Promise<Post> {
+    return this.postsService.create(input)
+  }
+}
+```
+
+### REST Controller
+
+```ts
+@Controller('posts')
+export class PostsController {
+  @Post()
+  createPost(@Body() body: CreatePost) {
+    return this.postsService.create(body)
+  }
+
+  @Get()
+  @ApiOkResponse({ type: [PostDto], description: 'Get all posts' })
+  getAll(): Post[] {
+    return this.postsService.findAll()
+  }
+}
+```
+
+## Available Scripts
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
+# Development
 $ pnpm run start:dev
 
-# production mode
+# Production build
+$ pnpm run build
 $ pnpm run start:prod
+
+# Testing
+$ pnpm run test
 ```
 
-## Run tests
+## Key Benefits
 
-```bash
-# unit tests
-$ pnpm run test
+- **75% less code** compared to traditional NestJS GraphQL
+- **Single source of truth** - define schema once, use everywhere
+- **Automatic field generation** from Zod schema with descriptions
+- **Perfect TypeScript integration** with IntelliSense
+- **Drop-in replacement** for `@ObjectType`/`@InputType`
+- **Built-in validation** using the same Zod schema
 
-# e2e tests
-$ pnpm run test:e2e
+## Testing GraphQL Queries
 
-# test coverage
-$ pnpm run test:cov
+Try these sample queries in GraphQL Playground at http://localhost:3000/graphql:
+
+```graphql
+# Get all posts
+query {
+  posts {
+    id
+    title
+    content
+    authorId
+  }
+}
+
+# Create a new post
+mutation {
+  createPost(input: {
+    title: "My New Post"
+    content: "This is the content of my post"
+    authorId: 1
+  }) {
+    id
+    title
+    content
+    authorId
+  }
+}
 ```
 
 ## Resources
 
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- [nestjs-zod Main Repository](../../../README.md)
+- [NestJS Documentation](https://docs.nestjs.com)
+- [Zod Documentation](https://zod.dev)
+- [GraphQL Documentation](https://graphql.org)
