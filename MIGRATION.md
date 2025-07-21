@@ -16,7 +16,7 @@ Additionally, `@nest-zod/z` is deprecated and will not be supported soon.  This 
 ### `nestjs-zod/frontend` is removed
 The same exports are now available in `@nest-zod/z/frontend` (see details about `@nest-zod/z` above).  This requires a slight change to the import path:
 ```diff
-- import { isNestJsZodIssue } from 'nestjs-zod/frontend'
+- import { isNestJsZodIssue } from '@at7211/nestjs-zod/frontend'
 + import { isNestJsZodIssue } from '@nest-zod/z/frontend'
 ```
 `@nest-zod/z/frontend` is also deprecated and will not be supported soon, as explained above.

@@ -9,17 +9,17 @@
 </p>
 <br/>
 <p align="center">
-  <a href="https://github.com/BenLorantfy/nestjs-zod/actions?query=branch%3Amain">
-    <img src="https://github.com/BenLorantfy/nestjs-zod/actions/workflows/test-and-build.yml/badge.svg?event=push&branch=main" alt="nestjs-zod CI Status" />
+  <a href="https://github.com/at7211/nestjs-zod/actions?query=branch%3Amain">
+    <img src="https://github.com/at7211/nestjs-zod/actions/workflows/test-and-build.yml/badge.svg?event=push&branch=main" alt="nestjs-zod CI Status" />
   </a>
   <a href="https://opensource.org/licenses/MIT" rel="nofollow">
-    <img src="https://img.shields.io/github/license/BenLorantfy/nestjs-zod" alt="License">
+    <img src="https://img.shields.io/github/license/at7211/nestjs-zod" alt="License">
   </a>
-  <a href="https://www.npmjs.com/package/nestjs-zod" rel="nofollow">
-    <img src="https://img.shields.io/npm/dw/nestjs-zod.svg" alt="npm">
+  <a href="https://www.npmjs.com/package/@at7211/nestjs-zod" rel="nofollow">
+    <img src="https://img.shields.io/npm/dw/@at7211/nestjs-zod.svg" alt="npm">
   </a>
-  <a href="https://www.npmjs.com/package/nestjs-zod" rel="nofollow">
-    <img src="https://img.shields.io/github/stars/BenLorantfy/nestjs-zod" alt="stars">
+  <a href="https://www.npmjs.com/package/@at7211/nestjs-zod" rel="nofollow">
+    <img src="https://img.shields.io/github/stars/at7211/nestjs-zod" alt="stars">
   </a>
 </p>
 
@@ -46,12 +46,12 @@
   - `dateString` for dates (supports casting to `Date`)
   - `password` for passwords (more complex string rules + OpenAPI conversion)
 - Customization - change exception format easily
-- Useful helpers for client side error handling (`nestjs-zod/frontend`)
+- Useful helpers for client side error handling (`@at7211/nestjs-zod/frontend`)
 
 ## Installation
 
 ```
-npm install nestjs-zod zod
+npm install @at7211/nestjs-zod zod
 ```
 
 Peer dependencies:
@@ -97,7 +97,7 @@ All peer dependencies are marked as optional for better client side usage, but y
 ## Creating DTO from Zod schema
 
 ```ts
-import { createZodDto } from 'nestjs-zod'
+import { createZodDto } from '@at7211/nestjs-zod'
 import { z } from 'zod'
 
 const CredentialsSchema = z.object({
@@ -140,7 +140,7 @@ class AuthController {
 ### Using standalone (without server-side dependencies)
 
 ```ts
-import { createZodDto } from 'nestjs-zod/dto'
+import { createZodDto } from '@at7211/nestjs-zod/dto'
 ```
 
 ## Using ZodValidationPipe
@@ -152,7 +152,7 @@ When the data is invalid - it throws [ZodValidationException](#validation-except
 ### Globally (recommended)
 
 ```ts
-import { ZodValidationPipe } from 'nestjs-zod'
+import { ZodValidationPipe } from '@at7211/nestjs-zod'
 import { APP_PIPE } from '@nestjs/core'
 
 @Module({
@@ -169,7 +169,7 @@ export class AppModule {}
 ### Locally
 
 ```ts
-import { ZodValidationPipe } from 'nestjs-zod'
+import { ZodValidationPipe } from '@at7211/nestjs-zod'
 
 // controller-level
 @UsePipes(ZodValidationPipe)
@@ -185,7 +185,7 @@ class AuthController {
 Also, you can instantly pass a Schema or DTO:
 
 ```ts
-import { ZodValidationPipe } from 'nestjs-zod'
+import { ZodValidationPipe } from '@at7211/nestjs-zod'
 import { UserDto, UserSchema } from './auth.contracts'
 
 // using schema
@@ -203,7 +203,7 @@ class AuthController {
 ### Creating custom validation pipe
 
 ```ts
-import { createZodValidationPipe } from 'nestjs-zod'
+import { createZodValidationPipe } from '@at7211/nestjs-zod'
 
 const MyZodValidationPipe = createZodValidationPipe({
   // provide custom validation exception factory
@@ -231,7 +231,7 @@ Parameters:
 When the data is invalid - it throws [ZodValidationException](#validation-exceptions).
 
 ```ts
-import { ZodGuard } from 'nestjs-zod'
+import { ZodGuard } from '@at7211/nestjs-zod'
 
 // controller-level
 @UseZodGuard('body', CredentialsSchema)
@@ -249,7 +249,7 @@ class MyController {
 ### Creating custom guard
 
 ```ts
-import { createZodGuard } from 'nestjs-zod'
+import { createZodGuard } from '@at7211/nestjs-zod'
 
 const MyZodGuard = createZodGuard({
   // provide custom validation exception factory
@@ -263,7 +263,7 @@ const MyZodGuard = createZodGuard({
 If you don't like `ZodGuard` and `ZodValidationPipe`, you can use `validate` function:
 
 ```ts
-import { validate } from 'nestjs-zod'
+import { validate } from '@at7211/nestjs-zod'
 
 validate(wrongThing, UserDto, (zodError) => new MyException(zodError)) // throws MyException
 
@@ -392,7 +392,7 @@ The decorators will automatically detect and integrate with your existing GraphQ
 Use `@ZodObjectType` to create GraphQL ObjectTypes from your Zod schemas:
 
 ```ts
-import { ZodObjectType } from 'nestjs-zod'
+import { ZodObjectType } from '@at7211/nestjs-zod'
 import { z } from 'zod'
 
 // Define your Zod schema
@@ -437,7 +437,7 @@ export class PostDto {}
 Use `@ZodInputType` to create GraphQL InputTypes from your Zod schemas:
 
 ```ts
-import { ZodInputType } from 'nestjs-zod'
+import { ZodInputType } from '@at7211/nestjs-zod'
 import { z } from 'zod'
 
 const CreatePostSchema = z.object({
@@ -767,7 +767,7 @@ Prerequisites:
 Apply the patch `patchNestJsSwagger()` in your `main.ts` file before setting up your swagger module:
 
 ```ts
-import { patchNestJsSwagger } from 'nestjs-zod'
+import { patchNestJsSwagger } from '@at7211/nestjs-zod'
 
 patchNestJsSwagger()
 ```
@@ -792,7 +792,7 @@ const CredentialsSchema = z.object({
 You can convert any Zod schema to an OpenAPI JSON object:
 
 ```ts
-import { zodToOpenAPI } from 'nestjs-zod'
+import { zodToOpenAPI } from '@at7211/nestjs-zod'
 import { z } from 'zod'
 
 const SignUpSchema = z.object({

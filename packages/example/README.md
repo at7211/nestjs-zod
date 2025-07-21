@@ -50,7 +50,7 @@ export const CreatePostSchema = z.object({
 ### Minimal GraphQL DTOs
 
 ```ts
-import { ZodObjectType, ZodInputType } from 'nestjs-zod'
+import { ZodObjectType, ZodInputType } from '@at7211/nestjs-zod'
 
 // Just 2 lines per DTO! 🎉
 @ZodObjectType(PostSchema)
