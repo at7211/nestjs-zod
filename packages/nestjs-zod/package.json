@@ -1,7 +1,7 @@
 {
-  "name": "nestjs-zod",
+  "name": "@at7211/nestjs-zod",
   "description": "All NestJS + Zod utilities you need",
-  "version": "0.0.0-set-by-ci",
+  "version": "0.0.1",
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
