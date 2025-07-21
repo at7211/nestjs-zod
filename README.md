@@ -1,3 +1,5 @@
+// Note: This is a fork of the original nestjs-zod repository by BenLorantfy. The main addition is enhanced GraphQL support, addressing [Issue #155](https://github.com/BenLorantfy/nestjs-zod/issues/155).
+
 <p align="center">
   <img src="logo.svg" width="560px" align="center" alt="NestJS + Zod logo" style="max-width: 100%;" />
   <h1></h1>
