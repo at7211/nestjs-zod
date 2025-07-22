@@ -29,7 +29,7 @@
     "@apollo/server": "^4.12.0",
     "graphql": "^16.10.0",
     "@nest-zod/z": "workspace:*",
-    "nestjs-zod": "workspace:*",
+    "@at7211/nestjs-zod": "workspace:*",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
     "zod": "^3.24.1"
