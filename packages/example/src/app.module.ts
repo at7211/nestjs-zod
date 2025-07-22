@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
-import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod'
+import { ZodSerializerInterceptor, ZodValidationPipe } from '@at7211/nestjs-zod'
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import { AppController } from './app.controller';
 import { AppService } from './app.service';

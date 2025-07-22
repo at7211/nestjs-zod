@@ -82,6 +82,7 @@ export interface ZodInputTypeOptions {
 }
 
 // @ZodObjectType decorator following NestJS GraphQL @ObjectType pattern
+// Overload 1: With schema parameter
 export function ZodObjectType<
   TOutput = any,
   TDef extends ZodTypeDef = ZodTypeDef,
@@ -90,10 +91,52 @@ export function ZodObjectType<
   schema: ZodSchema<TOutput, TDef, TInput>, 
   name?: string, 
   options?: ZodObjectTypeOptions
+): <T extends new (...args: any[]) => any>(constructor: T) => T
+
+// Overload 2: Without schema parameter (for use with createZodDto inheritance)
+export function ZodObjectType(
+  name?: string,
+  options?: ZodObjectTypeOptions
+): <T extends new (...args: any[]) => any>(constructor: T) => T
+
+// Overload 3: No parameters (for use with createZodDto inheritance)
+export function ZodObjectType(): <T extends new (...args: any[]) => any>(constructor: T) => T
+
+// Implementation
+export function ZodObjectType<
+  TOutput = any,
+  TDef extends ZodTypeDef = ZodTypeDef,
+  TInput = TOutput
+>(
+  schemaOrName?: ZodSchema<TOutput, TDef, TInput> | string, 
+  nameOrOptions?: string | ZodObjectTypeOptions, 
+  options?: ZodObjectTypeOptions
 ) {
   return function<T extends new (...args: any[]) => any>(constructor: T): T {
-    // Use provided name or auto-detect from class name
-    const className = name || constructor.name
+    // Parse parameters based on overloads
+    let schema: ZodSchema<TOutput, TDef, TInput> | undefined
+    let className: string
+    let finalOptions: ZodObjectTypeOptions | undefined
+    
+    if (schemaOrName && typeof schemaOrName === 'object' && '_def' in schemaOrName) {
+      // Overload 1: schema provided
+      schema = schemaOrName
+      className = (typeof nameOrOptions === 'string' ? nameOrOptions : constructor.name)
+      finalOptions = (typeof nameOrOptions === 'string' ? options : nameOrOptions as ZodObjectTypeOptions)
+    } else {
+      // Overload 2 & 3: no schema, try to extract from createZodDto inheritance
+      className = (typeof schemaOrName === 'string' ? schemaOrName : constructor.name)
+      if (typeof schemaOrName === 'string') {
+        finalOptions = nameOrOptions as ZodObjectTypeOptions | undefined
+      } else {
+        finalOptions = schemaOrName as ZodObjectTypeOptions | undefined
+      }
+      
+      // Try to extract schema from createZodDto inheritance
+      if ((constructor as any).schema) {
+        schema = (constructor as any).schema
+      }
+    }
     
     try {
       // Import NestJS GraphQL decorators
@@ -102,12 +145,12 @@ export function ZodObjectType<
       
       // Apply the @ObjectType decorator first
       ObjectType(className, { 
-        description: options?.description,
-        isAbstract: options?.isAbstract 
+        description: finalOptions?.description,
+        isAbstract: finalOptions?.isAbstract 
       })(constructor)
       
       // Apply @Field decorators to properties based on Zod schema
-      if ((schema as any)._def.typeName === 'ZodObject') {
+      if (schema && (schema as any)._def.typeName === 'ZodObject') {
         const shape = (schema as any)._def.shape()
         
         for (const [fieldName, fieldSchema] of Object.entries<any>(shape)) {
@@ -126,7 +169,7 @@ export function ZodObjectType<
             // Apply Field decorator
             Field(() => fieldType, fieldOptions)(constructor.prototype, fieldName)
             
-            // Ensure property exists on prototype
+            // Ensure property exists on prototype (only if not already from createZodDto)
             if (!constructor.prototype.hasOwnProperty(fieldName)) {
               Object.defineProperty(constructor.prototype, fieldName, {
                 enumerable: true,
@@ -140,41 +183,46 @@ export function ZodObjectType<
             Reflect.defineMetadata('design:type', getReflectType(fieldType), constructor.prototype, fieldName)
           }
         }
+      } else if (!schema) {
+        console.warn(`@ZodObjectType: No schema found for class ${className}. Make sure to either provide a schema parameter or extend createZodDto.`)
       }
     } catch (error) {
       console.warn('GraphQL decorators not available, falling back to createZodDto:', error)
     }
     
-    // Create options for ZodDto creation (for validation and other functionality)
-    const zodDtoOptions: CreateZodDtoOptions = {
-      name: className,
-      description: options?.description,
-      graphql: {
+    // Only create ZodDto functionality if schema is provided and not already applied
+    if (schema && !(constructor as any).isZodDto) {
+      const zodDtoOptions: CreateZodDtoOptions = {
         name: className,
-        description: options?.description,
-        isInput: false,  // Always ObjectType
-        autoFields: true
-      }
-    }
-    
-    // Create the ZodDto and copy its static methods
-    const ZodDtoClass = createZodDto(schema, zodDtoOptions)
-    
-    // Copy ZodDto static methods to the decorated class
-    Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
-      if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
-        const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
-        if (descriptor) {
-          Object.defineProperty(constructor, propName, descriptor)
+        description: finalOptions?.description,
+        graphql: {
+          name: className,
+          description: finalOptions?.description,
+          isInput: false,  // Always ObjectType
+          autoFields: true
         }
       }
-    })
+      
+      // Create the ZodDto and copy its static methods
+      const ZodDtoClass = createZodDto(schema, zodDtoOptions)
+      
+      // Copy ZodDto static methods to the decorated class
+      Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
+        if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
+          const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
+          if (descriptor) {
+            Object.defineProperty(constructor, propName, descriptor)
+          }
+        }
+      })
+    }
     
     return constructor as any
   }
 }
 
 // @ZodInputType decorator following NestJS GraphQL @InputType pattern
+// Overload 1: With schema parameter
 export function ZodInputType<
   TOutput = any,
   TDef extends ZodTypeDef = ZodTypeDef,
@@ -183,10 +231,52 @@ export function ZodInputType<
   schema: ZodSchema<TOutput, TDef, TInput>, 
   name?: string, 
   options?: ZodInputTypeOptions
+): <T extends new (...args: any[]) => any>(constructor: T) => T
+
+// Overload 2: Without schema parameter (for use with createZodDto inheritance)
+export function ZodInputType(
+  name?: string,
+  options?: ZodInputTypeOptions
+): <T extends new (...args: any[]) => any>(constructor: T) => T
+
+// Overload 3: No parameters (for use with createZodDto inheritance)
+export function ZodInputType(): <T extends new (...args: any[]) => any>(constructor: T) => T
+
+// Implementation
+export function ZodInputType<
+  TOutput = any,
+  TDef extends ZodTypeDef = ZodTypeDef,
+  TInput = TOutput
+>(
+  schemaOrName?: ZodSchema<TOutput, TDef, TInput> | string, 
+  nameOrOptions?: string | ZodInputTypeOptions, 
+  options?: ZodInputTypeOptions
 ) {
   return function<T extends new (...args: any[]) => any>(constructor: T): T {
-    // Use provided name or auto-detect from class name
-    const className = name || constructor.name
+    // Parse parameters based on overloads
+    let schema: ZodSchema<TOutput, TDef, TInput> | undefined
+    let className: string
+    let finalOptions: ZodInputTypeOptions | undefined
+    
+    if (schemaOrName && typeof schemaOrName === 'object' && '_def' in schemaOrName) {
+      // Overload 1: schema provided
+      schema = schemaOrName
+      className = (typeof nameOrOptions === 'string' ? nameOrOptions : constructor.name)
+      finalOptions = (typeof nameOrOptions === 'string' ? options : nameOrOptions as ZodInputTypeOptions)
+    } else {
+      // Overload 2 & 3: no schema, try to extract from createZodDto inheritance
+      className = (typeof schemaOrName === 'string' ? schemaOrName : constructor.name)
+      if (typeof schemaOrName === 'string') {
+        finalOptions = nameOrOptions as ZodInputTypeOptions | undefined
+      } else {
+        finalOptions = schemaOrName as ZodInputTypeOptions | undefined
+      }
+      
+      // Try to extract schema from createZodDto inheritance
+      if ((constructor as any).schema) {
+        schema = (constructor as any).schema
+      }
+    }
     
     try {
       // Import NestJS GraphQL decorators
@@ -195,11 +285,11 @@ export function ZodInputType<
       
       // Apply the @InputType decorator first
       InputType(className, { 
-        description: options?.description
+        description: finalOptions?.description
       })(constructor)
       
       // Apply @Field decorators to properties based on Zod schema
-      if ((schema as any)._def.typeName === 'ZodObject') {
+      if (schema && (schema as any)._def.typeName === 'ZodObject') {
         const shape = (schema as any)._def.shape()
         
         for (const [fieldName, fieldSchema] of Object.entries<any>(shape)) {
@@ -218,7 +308,7 @@ export function ZodInputType<
             // Apply Field decorator
             Field(() => fieldType, fieldOptions)(constructor.prototype, fieldName)
             
-            // Ensure property exists on prototype
+            // Ensure property exists on prototype (only if not already from createZodDto)
             if (!constructor.prototype.hasOwnProperty(fieldName)) {
               Object.defineProperty(constructor.prototype, fieldName, {
                 enumerable: true,
@@ -232,35 +322,39 @@ export function ZodInputType<
             Reflect.defineMetadata('design:type', getReflectType(fieldType), constructor.prototype, fieldName)
           }
         }
+      } else if (!schema) {
+        console.warn(`@ZodInputType: No schema found for class ${className}. Make sure to either provide a schema parameter or extend createZodDto.`)
       }
     } catch (error) {
       console.warn('GraphQL decorators not available, falling back to createZodDto:', error)
     }
     
-    // Create options for ZodDto creation (for validation and other functionality)
-    const zodDtoOptions: CreateZodDtoOptions = {
-      name: className,
-      description: options?.description,
-      graphql: {
+    // Only create ZodDto functionality if schema is provided and not already applied
+    if (schema && !(constructor as any).isZodDto) {
+      const zodDtoOptions: CreateZodDtoOptions = {
         name: className,
-        description: options?.description,
-        isInput: true,  // Always InputType
-        autoFields: true
-      }
-    }
-    
-    // Create the ZodDto and copy its static methods
-    const ZodDtoClass = createZodDto(schema, zodDtoOptions)
-    
-    // Copy ZodDto static methods to the decorated class
-    Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
-      if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
-        const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
-        if (descriptor) {
-          Object.defineProperty(constructor, propName, descriptor)
+        description: finalOptions?.description,
+        graphql: {
+          name: className,
+          description: finalOptions?.description,
+          isInput: true,  // Always InputType
+          autoFields: true
         }
       }
-    })
+      
+      // Create the ZodDto and copy its static methods
+      const ZodDtoClass = createZodDto(schema, zodDtoOptions)
+      
+      // Copy ZodDto static methods to the decorated class
+      Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
+        if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
+          const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
+          if (descriptor) {
+            Object.defineProperty(constructor, propName, descriptor)
+          }
+        }
+      })
+    }
     
     return constructor as any
   }

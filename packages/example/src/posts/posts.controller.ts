@@ -1,38 +1,42 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common'
 import { ApiOkResponse } from '@nestjs/swagger'
-import { ZodSerializerDto } from 'nestjs-zod'
-import { 
-  PostDto,           // ✨ UNIFIED: Using enhanced createZodDto!
+import { ZodSerializerDto } from '@at7211/nestjs-zod'
+import {
+  PostDto,
   Post as PostType,
-  CreatePost,
-  mockPosts
+  mockPosts,
+  type CreatePostInputDto
 } from './posts.dto'
 
 @Controller('posts')
 export class PostsController {
   @Post()
-  createPost(@Body() body: CreatePost) {
+  @ZodSerializerDto(PostDto)
+  @ApiOkResponse({ type: PostDto, description: 'Create a new post' })
+  createPost(@Body() body: CreatePostInputDto) {
     // Create new post with generated ID
-    const newPost: PostType = {
-      id: Date.now(),
-      ...body
+    const newPost = {
+      id: 10,
+      ...body,
     }
-    
+
     return newPost
   }
 
   @Get()
+  @ZodSerializerDto(PostDto)
   @ApiOkResponse({ type: [PostDto], description: 'Get all posts' })
   getAll(): PostType[] {
     return mockPosts
   }
 
   @Get(':id')
+  @ZodSerializerDto(PostDto)
   @ApiOkResponse({ type: PostDto, description: 'Get a post by ID' })
   getById(@Param('id') id: string): PostType {
     const postId = parseInt(id)
     const post = mockPosts.find(p => p.id === postId)
-    
+
     if (!post) {
       // Return a default post for demo
       const defaultPost: PostType = {
@@ -43,7 +47,7 @@ export class PostsController {
       }
       return defaultPost
     }
-    
+
     return post
   }
 }

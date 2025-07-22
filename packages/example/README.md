@@ -49,6 +49,10 @@ export const CreatePostSchema = z.object({
 
 ### Minimal GraphQL DTOs
 
+Choose your preferred approach:
+
+#### Option 1: Minimal with schema parameter
+
 ```ts
 import { ZodObjectType, ZodInputType } from '@at7211/nestjs-zod'
 
@@ -58,6 +62,24 @@ export class PostDto {}
 
 @ZodInputType(CreatePostSchema)
 export class CreatePostInputDto {}
+```
+
+#### Option 2: No parameters with inheritance (maximum type safety)
+
+```ts
+import { ZodObjectType, ZodInputType, createZodDto } from '@at7211/nestjs-zod'
+
+// Full TypeScript support with intellisense! 🎯
+@ZodObjectType()
+export class PostDto extends createZodDto(PostSchema) {}
+
+@ZodInputType()
+export class CreatePostInputDto extends createZodDto(CreatePostSchema) {}
+
+// Now you get complete TypeScript support:
+const post = new PostDto()
+post.id    // ✅ TypeScript autocomplete
+post.title // ✅ Full intellisense
 ```
 
 ### GraphQL Resolver
@@ -119,6 +141,8 @@ $ pnpm run test
 - **Perfect TypeScript integration** with IntelliSense
 - **Drop-in replacement** for `@ObjectType`/`@InputType`
 - **Built-in validation** using the same Zod schema
+- **Two flexible approaches**: minimal decorators or maximum type safety with inheritance
+- **No schema duplication** when using inheritance approach
 
 ## Testing GraphQL Queries
 

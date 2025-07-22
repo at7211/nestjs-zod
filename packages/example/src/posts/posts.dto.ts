@@ -1,9 +1,5 @@
-import { z } from 'zod'
-import { 
-  AutoZod, 
-  ZodObjectType,
-  ZodInputType
-} from 'nestjs-zod'
+import { z } from 'zod';
+import { AutoZod, ZodObjectType, ZodInputType, createZodDto } from '@at7211/nestjs-zod';
 
 // Single source of truth - one Zod schema for everything
 export const PostSchema = z.object({
@@ -11,43 +7,39 @@ export const PostSchema = z.object({
   title: z.string().describe('The title of the post'),
   content: z.string().describe('The main content of the post'),
   authorId: z.number().describe('The identifier of the post author'),
-})
+});
 
-export const CreatePostSchema = z.object({
-  title: z.string().describe('The title of the post'),
-  content: z.string().describe('The main content of the post'),
-  authorId: z.number().describe('The identifier of the post author'),
-}).describe('Create post input')
+export const CreatePostSchema = z
+  .object({
+    title: z.string().describe('The title of the post'),
+    content: z.string().describe('The main content of the post'),
+    authorId: z.number().describe('The identifier of the post author'),
+  })
+  .describe('Create post input');
 
-export const UpdatePostSchema = z.object({
-  title: z.string().optional().describe('The title of the post'),
-  content: z.string().optional().describe('The main content of the post'),
-}).describe('Update post input')
+export const UpdatePostSchema = z
+  .object({
+    title: z.string().optional().describe('The title of the post'),
+    content: z.string().optional().describe('The main content of the post'),
+  })
+  .describe('Update post input');
 
 @AutoZod(CreatePostSchema)
 export class CreatePostMinimalDto {}
 
-@AutoZod(PostSchema, {
-  description: 'A blog post entity'
-})
-export class PostClassDto {}
+@ZodObjectType()
+export class PostDto extends createZodDto(PostSchema) {}
 
-// 🎯 RECOMMENDED: MINIMAL NESTJS-STYLE DECORATORS
-// Clean, concise, zero boilerplate - just schema + class name!
+@ZodInputType()
+export class CreatePostInputDto extends createZodDto(CreatePostSchema) {}
 
-@ZodObjectType(PostSchema)
-export class PostDto {}
-
-@ZodInputType(CreatePostSchema) 
-export class CreatePostInputDto {}
-
-@ZodInputType(UpdatePostSchema)
-export class UpdatePostInputDto {}
+@ZodInputType()
+export class UpdatePostInputDto extends createZodDto(UpdatePostSchema) {}
 
 // Type exports for TypeScript
-export type Post = z.infer<typeof PostSchema>
-export type CreatePost = z.infer<typeof CreatePostSchema>
-export type UpdatePost = z.infer<typeof UpdatePostSchema>
+export type Post = z.infer<typeof PostSchema>;
+export type CreatePost = z.infer<typeof CreatePostSchema>;
+export type UpdatePost = z.infer<typeof UpdatePostSchema>;
 
 // Mock data for testing
 export const mockPosts: Post[] = [
@@ -63,4 +55,4 @@ export const mockPosts: Post[] = [
     content: 'Another post to test our unified DTO system',
     authorId: 2,
   },
-] 
+];

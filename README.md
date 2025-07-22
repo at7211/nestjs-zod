@@ -389,7 +389,9 @@ The decorators will automatically detect and integrate with your existing GraphQ
 
 ### Creating GraphQL types with @ZodObjectType
 
-Use `@ZodObjectType` to create GraphQL ObjectTypes from your Zod schemas:
+Use `@ZodObjectType` to create GraphQL ObjectTypes from your Zod schemas. There are two approaches:
+
+#### Approach 1: With schema parameter (minimal)
 
 ```ts
 import { ZodObjectType } from '@at7211/nestjs-zod'
@@ -406,6 +408,21 @@ const PostSchema = z.object({
 // Create GraphQL ObjectType with minimal decorator
 @ZodObjectType(PostSchema)
 export class PostDto {}
+```
+
+#### Approach 2: No parameters + inheritance (maximum type safety)
+
+```ts
+import { ZodObjectType, createZodDto } from '@at7211/nestjs-zod'
+
+// Schema-free decorator with full TypeScript support
+@ZodObjectType()
+export class PostDto extends createZodDto(PostSchema) {}
+
+// Now you get both GraphQL support AND full TypeScript intellisense:
+const post = new PostDto()
+post.id    // ✅ TypeScript knows this exists
+post.title // ✅ Full autocomplete support
 ```
 
 This is equivalent to the traditional NestJS GraphQL approach, but with **75% less code**:
@@ -434,7 +451,9 @@ export class PostDto {}
 
 ### Creating GraphQL inputs with @ZodInputType
 
-Use `@ZodInputType` to create GraphQL InputTypes from your Zod schemas:
+Use `@ZodInputType` to create GraphQL InputTypes from your Zod schemas. Just like `@ZodObjectType`, there are two approaches:
+
+#### Approach 1: With schema parameter (minimal)
 
 ```ts
 import { ZodInputType } from '@at7211/nestjs-zod'
@@ -449,6 +468,21 @@ const CreatePostSchema = z.object({
 // Create GraphQL InputType with minimal decorator
 @ZodInputType(CreatePostSchema)
 export class CreatePostInputDto {}
+```
+
+#### Approach 2: No parameters + inheritance (maximum type safety)
+
+```ts
+import { ZodInputType, createZodDto } from '@at7211/nestjs-zod'
+
+// Schema-free decorator with full TypeScript support
+@ZodInputType()
+export class CreatePostInputDto extends createZodDto(CreatePostSchema) {}
+
+// Full TypeScript intellisense for input validation:
+const input = new CreatePostInputDto()
+input.title   // ✅ TypeScript knows this exists
+input.validate({ title: "test", content: "content", authorId: 1 }) // ✅ Full validation support
 ```
 
 ### Using in resolvers
@@ -509,12 +543,19 @@ export class CreatePostInputDto {}
 But the minimal approach is recommended for cleaner code:
 
 ```ts
-// ✅ Recommended: Minimal approach
+// ✅ Recommended: Minimal approach (Option 1)
 @ZodObjectType(PostSchema)
 export class PostDto {}
 
 @ZodInputType(CreatePostSchema)
 export class CreatePostInputDto {}
+
+// ✅ Alternative: Maximum type safety (Option 2)
+@ZodObjectType()
+export class PostDto extends createZodDto(PostSchema) {}
+
+@ZodInputType()
+export class CreatePostInputDto extends createZodDto(CreatePostSchema) {}
 ```
 
 ### Migration from @ObjectType/@InputType
