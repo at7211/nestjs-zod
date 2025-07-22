@@ -127,3 +127,35 @@ describe.each([
   })
 });
 
+
+describe.each([
+  ['zod', actualZod],
+  ['@nest-zod/z', nestjsZod],
+])('Nested schema support (using %s)', (description, z) => {
+  it('should support nested ZodObjectType decorators', () => {
+    const AuthorSchema = z.object({
+      id: z.number().describe('Author ID'),
+      name: z.string().describe('Author name'),
+    })
+
+    const PostSchema = z.object({
+      id: z.number().describe('Post ID'),
+      title: z.string().describe('Post title'),
+      author: AuthorSchema.describe('Post author'),
+    })
+
+    // 先定義巢狀的 DTO
+    @ZodObjectType()
+    class AuthorDto extends createZodDto(AuthorSchema) {}
+
+    // 再定義包含巢狀的 DTO
+    @ZodObjectType()
+    class PostDto extends createZodDto(PostSchema) {}
+
+    // 驗證兩個 DTO 都正確創建
+    expect((AuthorDto as any).schema).toBe(AuthorSchema)
+    expect((PostDto as any).schema).toBe(PostSchema)
+    expect((AuthorDto as any).isZodDto).toBe(true)
+    expect((PostDto as any).isZodDto).toBe(true)
+  })
+});

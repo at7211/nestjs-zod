@@ -3,7 +3,8 @@ export {
   createZodDto, 
   ZodObjectType, 
   ZodInputType,
-  AutoZod
+  AutoZod,
+  preRegisterAllDtos
 } from './dto'
 export { ZodValidationException, ZodSerializationException } from './exception'
 export { createZodGuard, UseZodGuard, ZodGuard } from './guard'

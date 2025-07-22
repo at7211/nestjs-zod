@@ -68,6 +68,11 @@ export interface CreateZodDtoOptions {
 const schemaToClassMap = new WeakMap<ZodSchema<any>, any>()
 const classToSchemaMap = new WeakMap<any, ZodSchema<any>>()
 
+// Global registry for pre-registration of DTO classes
+// This allows us to scan and register all DTOs before GraphQL schema building
+const dtoClassRegistry = new Set<any>()
+const pendingDtoRegistrations = new Map<any, ZodSchema<any>>()
+
 
 
 
@@ -133,9 +138,13 @@ export function ZodObjectType<
       }
       
       // Try to extract schema from createZodDto inheritance
-      if ((constructor as any).schema) {
-        schema = (constructor as any).schema
-      }
+      // Check multiple possible locations for the schema
+      schema = (constructor as any).schema || 
+               (constructor as any).__zodSchema ||
+               // Check prototype chain for schema
+               (constructor.prototype && constructor.prototype.constructor && constructor.prototype.constructor.schema) ||
+               // Check if class extends createZodDto by looking at prototype
+               (Object.getPrototypeOf(constructor) && (Object.getPrototypeOf(constructor) as any).schema)
     }
     
     try {
@@ -167,7 +176,12 @@ export function ZodObjectType<
             }
 
             // Apply Field decorator
-            Field(() => fieldType, fieldOptions)(constructor.prototype, fieldName)
+            // For object types (DTO classes), use the class directly
+            // For primitive types, wrap in a function
+            const typeResolver = (typeof fieldType === 'function' || fieldType.prototype) ? 
+              () => fieldType : 
+              () => fieldType
+            Field(typeResolver, fieldOptions)(constructor.prototype, fieldName)
             
             // Ensure property exists on prototype (only if not already from createZodDto)
             if (!constructor.prototype.hasOwnProperty(fieldName)) {
@@ -190,31 +204,42 @@ export function ZodObjectType<
       console.warn('GraphQL decorators not available, falling back to createZodDto:', error)
     }
     
-    // Only create ZodDto functionality if schema is provided and not already applied
-    if (schema && !(constructor as any).isZodDto) {
-      const zodDtoOptions: CreateZodDtoOptions = {
-        name: className,
-        description: finalOptions?.description,
-        graphql: {
+    // Handle ZodDto functionality and schema registration
+    if (schema) {
+      // Register in global DTO registry for pre-registration
+      dtoClassRegistry.add(constructor)
+      pendingDtoRegistrations.set(constructor, schema)
+      
+      // Always register schema mapping for GraphQL field resolution
+      schemaToClassMap.set(schema, constructor)
+      classToSchemaMap.set(constructor, schema)
+      
+      // Only create ZodDto functionality if not already applied
+      if (!(constructor as any).isZodDto) {
+        const zodDtoOptions: CreateZodDtoOptions = {
           name: className,
           description: finalOptions?.description,
-          isInput: false,  // Always ObjectType
-          autoFields: true
-        }
-      }
-      
-      // Create the ZodDto and copy its static methods
-      const ZodDtoClass = createZodDto(schema, zodDtoOptions)
-      
-      // Copy ZodDto static methods to the decorated class
-      Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
-        if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
-          const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
-          if (descriptor) {
-            Object.defineProperty(constructor, propName, descriptor)
+          graphql: {
+            name: className,
+            description: finalOptions?.description,
+            isInput: false,  // Always ObjectType
+            autoFields: true
           }
         }
-      })
+        
+        // Create the ZodDto and copy its static methods
+        const ZodDtoClass = createZodDto(schema, zodDtoOptions)
+        
+        // Copy ZodDto static methods to the decorated class
+        Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
+          if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
+            const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
+            if (descriptor) {
+              Object.defineProperty(constructor, propName, descriptor)
+            }
+          }
+        })
+      }
     }
     
     return constructor as any
@@ -273,9 +298,13 @@ export function ZodInputType<
       }
       
       // Try to extract schema from createZodDto inheritance
-      if ((constructor as any).schema) {
-        schema = (constructor as any).schema
-      }
+      // Check multiple possible locations for the schema
+      schema = (constructor as any).schema || 
+               (constructor as any).__zodSchema ||
+               // Check prototype chain for schema
+               (constructor.prototype && constructor.prototype.constructor && constructor.prototype.constructor.schema) ||
+               // Check if class extends createZodDto by looking at prototype
+               (Object.getPrototypeOf(constructor) && (Object.getPrototypeOf(constructor) as any).schema)
     }
     
     try {
@@ -306,7 +335,12 @@ export function ZodInputType<
             }
 
             // Apply Field decorator
-            Field(() => fieldType, fieldOptions)(constructor.prototype, fieldName)
+            // For object types (DTO classes), use the class directly
+            // For primitive types, wrap in a function
+            const typeResolver = (typeof fieldType === 'function' || fieldType.prototype) ? 
+              () => fieldType : 
+              () => fieldType
+            Field(typeResolver, fieldOptions)(constructor.prototype, fieldName)
             
             // Ensure property exists on prototype (only if not already from createZodDto)
             if (!constructor.prototype.hasOwnProperty(fieldName)) {
@@ -329,31 +363,42 @@ export function ZodInputType<
       console.warn('GraphQL decorators not available, falling back to createZodDto:', error)
     }
     
-    // Only create ZodDto functionality if schema is provided and not already applied
-    if (schema && !(constructor as any).isZodDto) {
-      const zodDtoOptions: CreateZodDtoOptions = {
-        name: className,
-        description: finalOptions?.description,
-        graphql: {
+    // Handle ZodDto functionality and schema registration
+    if (schema) {
+      // Register in global DTO registry for pre-registration
+      dtoClassRegistry.add(constructor)
+      pendingDtoRegistrations.set(constructor, schema)
+      
+      // Always register schema mapping for GraphQL field resolution
+      schemaToClassMap.set(schema, constructor)
+      classToSchemaMap.set(constructor, schema)
+      
+      // Only create ZodDto functionality if not already applied
+      if (!(constructor as any).isZodDto) {
+        const zodDtoOptions: CreateZodDtoOptions = {
           name: className,
           description: finalOptions?.description,
-          isInput: true,  // Always InputType
-          autoFields: true
-        }
-      }
-      
-      // Create the ZodDto and copy its static methods
-      const ZodDtoClass = createZodDto(schema, zodDtoOptions)
-      
-      // Copy ZodDto static methods to the decorated class
-      Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
-        if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
-          const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
-          if (descriptor) {
-            Object.defineProperty(constructor, propName, descriptor)
+          graphql: {
+            name: className,
+            description: finalOptions?.description,
+            isInput: true,  // Always InputType
+            autoFields: true
           }
         }
-      })
+        
+        // Create the ZodDto and copy its static methods
+        const ZodDtoClass = createZodDto(schema, zodDtoOptions)
+        
+        // Copy ZodDto static methods to the decorated class
+        Object.getOwnPropertyNames(ZodDtoClass).forEach(propName => {
+          if (propName !== 'length' && propName !== 'name' && propName !== 'prototype') {
+            const descriptor = Object.getOwnPropertyDescriptor(ZodDtoClass, propName)
+            if (descriptor) {
+              Object.defineProperty(constructor, propName, descriptor)
+            }
+          }
+        })
+      }
     }
     
     return constructor as any
@@ -742,9 +787,15 @@ function getGraphQLFieldType(fieldSchema: any): any {
       const itemType = getGraphQLFieldType(fieldSchema._def.type)
       return itemType ? [itemType] : [String]
     case 'ZodObject':
-      // Try to find registered DTO class
+      // Try to find the DTO class directly
       const dtoClass = schemaToClassMap.get(fieldSchema)
-      return dtoClass || Object
+      if (dtoClass) {
+        return dtoClass
+      }
+      
+      // If no DTO class found, warn and return Object for now
+      console.warn(`No DTO class found for nested ZodObject schema. Consider defining a @ZodObjectType decorated class for this schema.`)
+      return Object
     case 'ZodOptional':
     case 'ZodNullable':
     case 'ZodDefault':
@@ -752,6 +803,7 @@ function getGraphQLFieldType(fieldSchema: any): any {
     case 'ZodEnum':
       return String // Enums as strings by default
     default:
+      console.warn(`Unsupported Zod type: ${typeName}, falling back to String`)
       return String // Default to string
   }
 }
@@ -779,4 +831,74 @@ export function getDtoFromSchema(schema: ZodSchema<any>): any {
 export function registerDtoMapping(dtoClass: any, schema: ZodSchema<any>) {
   schemaToClassMap.set(schema, dtoClass)
   classToSchemaMap.set(dtoClass, schema)
+}
+
+// Pre-registration function to process all DTOs before GraphQL schema building
+export function preRegisterAllDtos() {
+  console.log(`Pre-registering ${pendingDtoRegistrations.size} DTO classes...`)
+  
+  for (const [dtoClass, schema] of pendingDtoRegistrations.entries()) {
+    console.log(`Registering DTO class: ${dtoClass.name} with schema`)
+    
+    // Ensure the mapping is established
+    if (!schemaToClassMap.has(schema)) {
+      schemaToClassMap.set(schema, dtoClass)
+    }
+    if (!classToSchemaMap.has(dtoClass)) {
+      classToSchemaMap.set(dtoClass, schema)
+    }
+    
+    // Process nested schemas within this DTO's schema
+    if (schema && (schema as any)._def.typeName === 'ZodObject') {
+      const shape = (schema as any)._def.shape()
+      
+      for (const [fieldName, fieldSchema] of Object.entries<any>(shape)) {
+        if (fieldSchema._def.typeName === 'ZodObject') {
+          console.log(`Found nested ZodObject field: ${fieldName}`)
+          
+          // Check if there's already a DTO class for this nested schema
+          if (!schemaToClassMap.has(fieldSchema)) {
+            console.log(`No DTO class found for nested field ${fieldName}, searching...`)
+            
+            // Look for a matching DTO in the registry
+            for (const [otherDtoClass, otherSchema] of pendingDtoRegistrations.entries()) {
+              // Check for exact object identity first
+              if (otherSchema === fieldSchema) {
+                console.log(`Found exact matching DTO class: ${otherDtoClass.name} for nested field ${fieldName}`)
+                schemaToClassMap.set(fieldSchema, otherDtoClass)
+                break
+              }
+              
+              // If not exact match, check for schema with .describe() wrapper
+              // ZodObject with describe() wraps the original schema
+              if (fieldSchema._def.typeName === 'ZodObject' && 
+                  (fieldSchema._def as any).innerType && 
+                  otherSchema === (fieldSchema._def as any).innerType) {
+                console.log(`Found matching DTO class through innerType: ${otherDtoClass.name} for nested field ${fieldName}`)
+                schemaToClassMap.set(fieldSchema, otherDtoClass)
+                break
+              }
+              
+              // Alternative approach: check if otherSchema is wrapped and matches fieldSchema
+              if ((otherSchema._def as any).innerType === fieldSchema) {
+                console.log(`Found matching DTO class through reverse innerType: ${otherDtoClass.name} for nested field ${fieldName}`)
+                schemaToClassMap.set(fieldSchema, otherDtoClass)
+                break
+              }
+            }
+            
+            if (!schemaToClassMap.has(fieldSchema)) {
+              console.log(`Still no DTO class found for nested field ${fieldName}`)
+            }
+          } else {
+            console.log(`DTO class already registered for nested field: ${fieldName}`)
+          }
+        }
+      }
+    }
+  }
+  
+  // Clear pending registrations after processing
+  pendingDtoRegistrations.clear()
+  console.log('Pre-registration completed')
 }

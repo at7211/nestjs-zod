@@ -2,8 +2,12 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { patchNestJsSwagger } from '@at7211/nestjs-zod';
+import { setupDtoPreRegistration } from './setup';
 
-patchNestJsSwagger()
+// Setup DTO pre-registration before anything else
+setupDtoPreRegistration();
+
+patchNestJsSwagger();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -24,9 +28,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  await app.listen(3000);
-  console.log(`🚀 Application is running on: http://localhost:3000`);
-  console.log(`🎮 GraphQL Playground: http://localhost:3000/graphql`);
-  console.log(`📚 Swagger API Docs: http://localhost:3000/api`);
+  await app.listen(3001);
+  console.log(`🚀 Application is running on: http://localhost:3001`);
+  console.log(`🎮 GraphQL Playground: http://localhost:3001/graphql`);
+  console.log(`📚 Swagger API Docs: http://localhost:3001/api`);
 }
 bootstrap();
