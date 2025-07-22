@@ -2,10 +2,6 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { patchNestJsSwagger } from '@at7211/nestjs-zod';
-import { setupDtoPreRegistration } from './setup';
-
-// Setup DTO pre-registration before anything else
-setupDtoPreRegistration();
 
 patchNestJsSwagger();
 
@@ -32,5 +28,6 @@ async function bootstrap() {
   console.log(`🚀 Application is running on: http://localhost:3001`);
   console.log(`🎮 GraphQL Playground: http://localhost:3001/graphql`);
   console.log(`📚 Swagger API Docs: http://localhost:3001/api`);
+  console.log(`🤖 Zero config - DTOs handled automatically!`);
 }
 bootstrap();

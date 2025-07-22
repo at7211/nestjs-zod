@@ -1,12 +1,12 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common'
-import { ApiOkResponse } from '@nestjs/swagger'
-import { ZodSerializerDto } from '@at7211/nestjs-zod'
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
+import { ZodSerializerDto } from '@at7211/nestjs-zod';
 import {
   PostDto,
   Post as PostType,
   mockPosts,
-  type CreatePostInputDto
-} from './posts.dto'
+  type CreatePostInputDto,
+} from './posts.dto';
 
 @Controller('posts')
 export class PostsController {
@@ -18,24 +18,24 @@ export class PostsController {
     const newPost = {
       id: 10,
       ...body,
-    }
+    };
 
-    return newPost
+    return newPost;
   }
 
   @Get()
   @ZodSerializerDto(PostDto)
   @ApiOkResponse({ type: [PostDto], description: 'Get all posts' })
   getAll(): PostType[] {
-    return mockPosts
+    return mockPosts;
   }
 
   @Get(':id')
   @ZodSerializerDto(PostDto)
   @ApiOkResponse({ type: PostDto, description: 'Get a post by ID' })
   getById(@Param('id') id: string): PostType {
-    const postId = parseInt(id)
-    const post = mockPosts.find(p => p.id === postId)
+    const postId = parseInt(id);
+    const post = mockPosts.find((p) => p.id === postId);
 
     if (!post) {
       // Return a default post for demo
@@ -43,11 +43,11 @@ export class PostsController {
         id: postId,
         title: 'Default Post',
         content: 'This post was created with ZodGraphQL decorator!',
-        authorId: 1,
-      }
-      return defaultPost
+        author: undefined,
+      };
+      return defaultPost;
     }
 
-    return post
+    return post;
   }
 }
