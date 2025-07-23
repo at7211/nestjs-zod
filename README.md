@@ -376,227 +376,280 @@ See the example app [here](/packages/example/src/http-exception.filter.ts) for m
 
 ## GraphQL support
 
-`nestjs-zod` provides seamless GraphQL integration with minimal decorators that automatically generate GraphQL types and fields from your Zod schemas.
+`@at7211/nestjs-zod` provides powerful GraphQL integration that automatically generates GraphQL types from your Zod schemas. Choose the approach that fits your needs.
 
-### GraphQL Setup
+### Setup
 
 Prerequisites:
+- `@nestjs/graphql` version `^9.0.0` or higher
+- GraphQL driver (Apollo or Mercurius) configured
 
-- `@nestjs/graphql` with version `^9.0.0` or higher installed
-- GraphQL driver (Apollo or Mercurius) configured in your NestJS application
+The library automatically detects your GraphQL setup - no additional configuration needed.
 
-The decorators will automatically detect and integrate with your existing GraphQL setup.
+### Three Usage Patterns
 
-### Creating GraphQL types with @ZodObjectType
+#### Pattern 1: Simple Function Call (Recommended)
 
-Use `@ZodObjectType` to create GraphQL ObjectTypes from your Zod schemas. There are two approaches:
-
-#### Approach 1: With schema parameter (minimal)
+Perfect for quick prototyping and when you don't need custom methods:
 
 ```ts
-import { ZodObjectType } from '@at7211/nestjs-zod'
+import { createZodDto } from '@at7211/nestjs-zod'
 import { z } from 'zod'
 
-// Define your Zod schema
-const PostSchema = z.object({
-  id: z.number().describe('The unique identifier of the post'),
-  title: z.string().describe('The title of the post'),
-  content: z.string().describe('The main content of the post'),
-  authorId: z.number().describe('The identifier of the post author'),
+const UserSchema = z.object({
+  id: z.number().describe('User ID'),
+  name: z.string().describe('Full name'),
+  email: z.string().email().describe('Email address'),
 })
 
-// Create GraphQL ObjectType with minimal decorator
-@ZodObjectType(PostSchema)
-export class PostDto {}
+// Creates DTO with GraphQL support + validation methods
+const UserDto = createZodDto(UserSchema, {
+  graphql: { name: 'User' }
+})
+
+// Immediately usable
+const user = UserDto.parse({ id: 1, name: 'John', email: 'john@example.com' })
 ```
 
-#### Approach 2: No parameters + inheritance (maximum type safety)
+#### Pattern 2: Class with Full Features (Most Flexible)
+
+Best for production code when you need custom methods and maximum type safety:
 
 ```ts
 import { ZodObjectType, createZodDto } from '@at7211/nestjs-zod'
 
-// Schema-free decorator with full TypeScript support
 @ZodObjectType()
-export class PostDto extends createZodDto(PostSchema) {}
-
-// Now you get both GraphQL support AND full TypeScript intellisense:
-const post = new PostDto()
-post.id    // ✅ TypeScript knows this exists
-post.title // ✅ Full autocomplete support
-```
-
-This is equivalent to the traditional NestJS GraphQL approach, but with **75% less code**:
-
-```ts
-// Traditional NestJS GraphQL (verbose)
-@ObjectType('Post')
-export class PostDto {
-  @Field()
-  id: number
-
-  @Field({ description: 'The title of the post' })
-  title: string
-
-  @Field({ description: 'The main content of the post' })
-  content: string
-
-  @Field({ description: 'The identifier of the post author' })
-  authorId: number
+export class UserDto extends createZodDto(UserSchema) {
+  // ✅ Add custom methods
+  getDisplayName(): string {
+    return `${this.name} (${this.email})`
+  }
+  
+  // ✅ Add static methods
+  static async findByEmail(email: string) {
+    // Custom logic here
+  }
+  
+  // ✅ Full TypeScript intellisense
+  // this.id, this.name, this.email all available
 }
 
-// vs. nestjs-zod (minimal)
-@ZodObjectType(PostSchema)
-export class PostDto {}
+// Usage in resolvers
+@Resolver(() => UserDto)
+export class UsersResolver {
+  @Query(() => UserDto)
+  async getUser(@Args('id') id: number): Promise<UserDto> {
+    const userData = await this.usersService.findOne(id)
+    return UserDto.parse(userData) // Full validation + type safety
+  }
+}
 ```
 
-### Creating GraphQL inputs with @ZodInputType
+#### Pattern 3: Decorator Only (GraphQL Only)
 
-Use `@ZodInputType` to create GraphQL InputTypes from your Zod schemas. Just like `@ZodObjectType`, there are two approaches:
-
-#### Approach 1: With schema parameter (minimal)
+Use when you only need GraphQL types without validation methods:
 
 ```ts
-import { ZodInputType } from '@at7211/nestjs-zod'
-import { z } from 'zod'
+@ZodObjectType(UserSchema, 'User')
+export class UserDto {}
 
-const CreatePostSchema = z.object({
-  title: z.string().describe('The title of the post'),
-  content: z.string().describe('The main content of the post'),
-  authorId: z.number().describe('The identifier of the post author'),
+// ⚠️ Note: This gives you GraphQL types but no validation methods
+```
+
+### Input Types for Mutations
+
+Create GraphQL InputTypes for mutations and form inputs:
+
+```ts
+const CreateUserSchema = z.object({
+  name: z.string().min(2).describe('Full name'),
+  email: z.string().email().describe('Email address'),
 })
 
-// Create GraphQL InputType with minimal decorator
-@ZodInputType(CreatePostSchema)
-export class CreatePostInputDto {}
-```
+// Pattern 1: Simple
+const CreateUserInput = createZodDto(CreateUserSchema, {
+  graphql: { name: 'CreateUserInput', isInput: true }
+})
 
-#### Approach 2: No parameters + inheritance (maximum type safety)
-
-```ts
-import { ZodInputType, createZodDto } from '@at7211/nestjs-zod'
-
-// Schema-free decorator with full TypeScript support
+// Pattern 2: Class with validation methods
 @ZodInputType()
-export class CreatePostInputDto extends createZodDto(CreatePostSchema) {}
+export class CreateUserInput extends createZodDto(CreateUserSchema) {}
 
-// Full TypeScript intellisense for input validation:
-const input = new CreatePostInputDto()
-input.title   // ✅ TypeScript knows this exists
-input.validate({ title: "test", content: "content", authorId: 1 }) // ✅ Full validation support
-```
-
-### Using in resolvers
-
-Use your decorated DTOs in GraphQL resolvers just like traditional NestJS GraphQL classes:
-
-```ts
-import { Resolver, Query, Mutation, Args } from '@nestjs/graphql'
-
-@Resolver(() => PostDto)
-export class PostsResolver {
-  @Query(() => [PostDto])
-  async getPosts(): Promise<Post[]> {
-    return this.postsService.findAll()
-  }
-
-  @Query(() => PostDto, { nullable: true })
-  async getPost(@Args('id', { type: () => Int }) id: number): Promise<Post | null> {
-    return this.postsService.findOne(id)
-  }
-
-  @Mutation(() => PostDto)
-  async createPost(
-    @Args('input', { type: () => CreatePostInputDto }) input: CreatePostInputDto
-  ): Promise<Post> {
-    return this.postsService.create(input)
-  }
+// Usage in resolver
+@Mutation(() => UserDto)
+async createUser(
+  @Args('input') input: CreateUserInput
+): Promise<UserDto> {
+  // Input is automatically validated
+  const userData = CreateUserInput.parse(input)
+  return this.usersService.create(userData)
 }
 ```
 
-### Key benefits
+### Nested Objects & Arrays
 
-- **Minimal boilerplate**: Just 2 lines per DTO (`@decorator` + `export class`)
-- **Automatic field generation**: All fields and descriptions auto-generated from Zod schema
-- **Type safety**: Full TypeScript support with IntelliSense
-- **Single source of truth**: Define schema once, use everywhere (REST + GraphQL)
-- **Drop-in replacement**: Perfect compatibility with existing `@ObjectType`/`@InputType` usage
-- **Validation included**: Automatic request validation using the same Zod schema
-
-### Advanced usage
-
-You can still provide explicit names and options when needed:
+The library automatically handles complex nested structures:
 
 ```ts
-// With explicit GraphQL type name
-@ZodObjectType(PostSchema, 'Post', { 
-  description: 'A blog post entity' 
+const AddressSchema = z.object({
+  street: z.string(),
+  city: z.string(),
+  country: z.string(),
 })
-export class PostDto {}
 
-// With explicit InputType name
-@ZodInputType(CreatePostSchema, 'CreatePostInput', { 
-  description: 'Input for creating a new post' 
-})
-export class CreatePostInputDto {}
-```
-
-But the minimal approach is recommended for cleaner code:
-
-```ts
-// ✅ Recommended: Minimal approach (Option 1)
-@ZodObjectType(PostSchema)
-export class PostDto {}
-
-@ZodInputType(CreatePostSchema)
-export class CreatePostInputDto {}
-
-// ✅ Alternative: Maximum type safety (Option 2)
-@ZodObjectType()
-export class PostDto extends createZodDto(PostSchema) {}
-
-@ZodInputType()
-export class CreatePostInputDto extends createZodDto(CreatePostSchema) {}
-```
-
-### Migration from @ObjectType/@InputType
-
-Migrating from traditional NestJS GraphQL is straightforward:
-
-**Before:**
-```ts
-@ObjectType('Post')
-export class PostDto {
-  @Field()
-  id: number
-
-  @Field({ description: 'The title' })
-  title: string
-
-  @Field({ description: 'The content' })
-  content: string
-}
-```
-
-**After:**
-```ts
-// 1. Define your Zod schema (if you don't have one)
-const PostSchema = z.object({
+const UserSchema = z.object({
   id: z.number(),
-  title: z.string().describe('The title'),
-  content: z.string().describe('The content'),
+  name: z.string(),
+  addresses: z.array(AddressSchema),      // Array of objects
+  metadata: z.record(z.string()),        // Key-value pairs
+  createdAt: z.date(),                   // Date fields
 })
 
-// 2. Replace @ObjectType with @ZodObjectType
-@ZodObjectType(PostSchema)
-export class PostDto {}
+// Everything auto-generates correctly in GraphQL
+@ZodObjectType()
+export class UserDto extends createZodDto(UserSchema) {}
 ```
 
-**Benefits of migration:**
-- Remove all `@Field()` decorators
-- Remove type annotations
-- Centralize validation and type definition in Zod schema
-- Get automatic field descriptions from `.describe()`
-- Reduce code by ~75%
+### Practical Examples
+
+#### Complete CRUD Setup
+
+```ts
+// schemas/user.schema.ts
+export const UserSchema = z.object({
+  id: z.number().describe('Unique identifier'),
+  name: z.string().min(2).max(50).describe('Full name'),
+  email: z.string().email().describe('Email address'),
+  createdAt: z.date(),
+})
+
+export const CreateUserSchema = UserSchema.omit({ id: true, createdAt: true })
+export const UpdateUserSchema = CreateUserSchema.partial()
+
+// dto/user.dto.ts
+@ZodObjectType()
+export class UserDto extends createZodDto(UserSchema) {}
+
+@ZodInputType()
+export class CreateUserInput extends createZodDto(CreateUserSchema) {}
+
+@ZodInputType()
+export class UpdateUserInput extends createZodDto(UpdateUserSchema) {}
+
+// resolvers/users.resolver.ts
+@Resolver(() => UserDto)
+export class UsersResolver {
+  @Query(() => [UserDto])
+  async users(): Promise<UserDto[]> {
+    const users = await this.usersService.findAll()
+    return users.map(user => UserDto.parse(user))
+  }
+
+  @Mutation(() => UserDto)
+  async createUser(@Args('input') input: CreateUserInput): Promise<UserDto> {
+    const validInput = CreateUserInput.parse(input)
+    const user = await this.usersService.create(validInput)
+    return UserDto.parse(user)
+  }
+
+  @Mutation(() => UserDto)
+  async updateUser(
+    @Args('id') id: number,
+    @Args('input') input: UpdateUserInput
+  ): Promise<UserDto> {
+    const validInput = UpdateUserInput.parse(input)
+    const user = await this.usersService.update(id, validInput)
+    return UserDto.parse(user)
+  }
+}
+```
+
+### Best Practices
+
+#### 1. Use Pattern 1 for Simple Cases
+```ts
+// ✅ Good for simple DTOs
+const UserDto = createZodDto(UserSchema, { graphql: { name: 'User' } })
+```
+
+#### 2. Use Pattern 2 for Production Code
+```ts
+// ✅ Best for real applications
+@ZodObjectType()
+export class UserDto extends createZodDto(UserSchema) {
+  // Add custom business logic here
+}
+```
+
+#### 3. Organize Your Schemas
+```ts
+// ✅ Keep schemas separate from DTOs
+// schemas/user.schema.ts
+export const UserSchema = z.object({ ... })
+
+// dto/user.dto.ts  
+@ZodObjectType()
+export class UserDto extends createZodDto(UserSchema) {}
+```
+
+#### 4. Use Descriptions for Better GraphQL Docs
+```ts
+const UserSchema = z.object({
+  id: z.number().describe('Unique user identifier'),
+  name: z.string().describe('User full name'),
+  email: z.string().email().describe('User email address'),
+})
+```
+
+### Migration from Traditional GraphQL
+
+**Before (Traditional NestJS GraphQL):**
+```ts
+@ObjectType('User')
+export class UserDto {
+  @Field(() => ID)
+  id: number
+
+  @Field({ description: 'User full name' })
+  name: string
+
+  @Field({ description: 'User email address' })
+  email: string
+}
+
+@InputType('CreateUserInput')
+export class CreateUserInput {
+  @Field({ description: 'User full name' })
+  name: string
+
+  @Field({ description: 'User email address' })
+  email: string
+}
+```
+
+**After (With nestjs-zod):**
+```ts
+const UserSchema = z.object({
+  id: z.number().describe('Unique user identifier'),
+  name: z.string().describe('User full name'),
+  email: z.string().email().describe('User email address'),
+})
+
+const CreateUserSchema = UserSchema.omit({ id: true })
+
+@ZodObjectType()
+export class UserDto extends createZodDto(UserSchema) {}
+
+@ZodInputType()
+export class CreateUserInput extends createZodDto(CreateUserSchema) {}
+```
+
+**Benefits:**
+- 75% less boilerplate code
+- Single source of truth for validation and GraphQL
+- Automatic validation in resolvers
+- Better type safety
+- Consistent field descriptions
 
 ## Extended Zod
 
