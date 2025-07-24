@@ -68,12 +68,10 @@ export interface CreateZodDtoOptions {
 const schemaToClassMap = new WeakMap<ZodSchema<any>, any>()
 const classToSchemaMap = new WeakMap<any, ZodSchema<any>>()
 
-// Global registry for pre-registration of DTO classes
-const dtoClassRegistry = new Set<any>()
+// Registry for DTO class mappings
 const pendingDtoRegistrations = new Map<any, ZodSchema<any>>()
 
-// 🎯 SIMPLE SOLUTION: Use process.nextTick to delay field resolution
-// This solves the timing issue without complex file scanning
+// Use process.nextTick to delay field resolution
 let fieldResolutionScheduled = false
 
 function scheduleFieldResolution() {
@@ -82,8 +80,6 @@ function scheduleFieldResolution() {
 
   // Delay until all decorators have run
   process.nextTick(() => {
-    console.log(`🔄 Processing ${pendingDtoRegistrations.size} DTO field resolutions...`)
-
     // Now all DTOs are registered, resolve field mappings
     for (const [dtoClass, schema] of pendingDtoRegistrations.entries()) {
       schemaToClassMap.set(schema, dtoClass)
@@ -92,7 +88,6 @@ function scheduleFieldResolution() {
 
     pendingDtoRegistrations.clear()
     fieldResolutionScheduled = false
-    console.log('✅ Field resolution completed')
   })
 }
 
@@ -107,28 +102,75 @@ export interface ZodInputTypeOptions {
   description?: string
 }
 
+// Common GraphQL decorator logic
+function applyGraphQLDecorator(
+  constructor: any,
+  schema: any,
+  className: string,
+  isInput: boolean,
+  options: { description?: string; isAbstract?: boolean }
+) {
+  try {
+    // Import NestJS GraphQL decorators
+    const graphqlModule = require('@nestjs/graphql')
+    const { ObjectType, InputType, Field } = graphqlModule
+    const GraphQLDecorator = isInput ? InputType : ObjectType
+
+    // Apply the type decorator
+    const decoratorOptions: any = {
+      description: options?.description
+    }
+    if (!isInput && options.isAbstract) {
+      decoratorOptions.isAbstract = options.isAbstract
+    }
+    GraphQLDecorator(className, decoratorOptions)(constructor)
+
+    // Apply @Field decorators to properties based on Zod schema
+    if (schema && (schema as any)._def.typeName === 'ZodObject') {
+      const shape = (schema as any)._def.shape()
+
+      for (const [fieldName, fieldSchema] of Object.entries<any>(shape)) {
+        const fieldType = getGraphQLFieldType(fieldSchema, isInput)
+        if (fieldType) {
+          const isNullable = isFieldNullable(fieldSchema)
+          const description = (fieldSchema as any)._def?.description
+
+          const fieldOptions: any = {
+            nullable: isNullable
+          }
+          if (description) {
+            fieldOptions.description = description
+          }
+
+          // Apply Field decorator
+          const typeResolver = (typeof fieldType === 'function' || fieldType.prototype) ?
+            () => fieldType :
+            () => fieldType
+          Field(typeResolver, fieldOptions)(constructor.prototype, fieldName)
+
+          // Ensure property exists on prototype
+          if (!constructor.prototype.hasOwnProperty(fieldName)) {
+            Object.defineProperty(constructor.prototype, fieldName, {
+              enumerable: true,
+              configurable: true,
+              writable: true,
+              value: undefined
+            })
+          }
+
+          // Set design:type metadata for GraphQL
+          Reflect.defineMetadata('design:type', getReflectType(fieldType), constructor.prototype, fieldName)
+        }
+      }
+    } else if (!schema) {
+      // Schema not found - this is acceptable for some use cases
+    }
+  } catch (error) {
+    // GraphQL decorators not available, falling back to createZodDto
+  }
+}
+
 // @ZodObjectType decorator following NestJS GraphQL @ObjectType pattern
-// Overload 1: With schema parameter
-export function ZodObjectType<
-  TOutput = any,
-  TDef extends ZodTypeDef = ZodTypeDef,
-  TInput = TOutput
->(
-  schema: ZodSchema<TOutput, TDef, TInput>,
-  name?: string,
-  options?: ZodObjectTypeOptions
-): <T extends new (...args: any[]) => any>(constructor: T) => T
-
-// Overload 2: Without schema parameter (for use with createZodDto inheritance)
-export function ZodObjectType(
-  name?: string,
-  options?: ZodObjectTypeOptions
-): <T extends new (...args: any[]) => any>(constructor: T) => T
-
-// Overload 3: No parameters (for use with createZodDto inheritance)
-export function ZodObjectType(): <T extends new (...args: any[]) => any>(constructor: T) => T
-
-// Implementation
 export function ZodObjectType<
   TOutput = any,
   TDef extends ZodTypeDef = ZodTypeDef,
@@ -145,12 +187,12 @@ export function ZodObjectType<
     let finalOptions: ZodObjectTypeOptions | undefined
 
     if (schemaOrName && typeof schemaOrName === 'object' && '_def' in schemaOrName) {
-      // Overload 1: schema provided
+      // Schema provided as first parameter
       schema = schemaOrName
       className = (typeof nameOrOptions === 'string' ? nameOrOptions : constructor.name)
       finalOptions = (typeof nameOrOptions === 'string' ? options : nameOrOptions as ZodObjectTypeOptions)
     } else {
-      // Overload 2 & 3: no schema, try to extract from createZodDto inheritance
+      // No schema, try to extract from createZodDto inheritance
       className = (typeof schemaOrName === 'string' ? schemaOrName : constructor.name)
       if (typeof schemaOrName === 'string') {
         finalOptions = nameOrOptions as ZodObjectTypeOptions | undefined
@@ -158,83 +200,20 @@ export function ZodObjectType<
         finalOptions = schemaOrName as ZodObjectTypeOptions | undefined
       }
 
-      // Try to extract schema from createZodDto inheritance
-      // Check multiple possible locations for the schema
+      // Extract schema from createZodDto inheritance
       schema = (constructor as any).schema ||
                (constructor as any).__zodSchema ||
-               // Check prototype chain for schema
                (constructor.prototype && constructor.prototype.constructor && constructor.prototype.constructor.schema) ||
-               // Check if class extends createZodDto by looking at prototype
                (Object.getPrototypeOf(constructor) && (Object.getPrototypeOf(constructor) as any).schema)
     }
 
-        try {
-      // Import NestJS GraphQL decorators
-      const graphqlModule = require('@nestjs/graphql')
-      const { ObjectType, Field } = graphqlModule
-
-            // Apply the @ObjectType decorator first
-      ObjectType(className, {
-        description: finalOptions?.description,
-        isAbstract: finalOptions?.isAbstract
-      })(constructor)
-
-      // Apply @Field decorators to properties based on Zod schema
-      if (schema && (schema as any)._def.typeName === 'ZodObject') {
-        const shape = (schema as any)._def.shape()
-
-        for (const [fieldName, fieldSchema] of Object.entries<any>(shape)) {
-          const fieldType = getGraphQLFieldType(fieldSchema, false) // ObjectType context
-          if (fieldType) {
-            const isNullable = isFieldNullable(fieldSchema)
-            const description = (fieldSchema as any)._def?.description
-
-            const fieldOptions: any = {
-              nullable: isNullable
-            }
-            if (description) {
-              fieldOptions.description = description
-            }
-
-            // Apply Field decorator
-            // For object types (DTO classes), use the class directly
-            // For primitive types, wrap in a function
-            const typeResolver = (typeof fieldType === 'function' || fieldType.prototype) ?
-              () => fieldType :
-              () => fieldType
-            Field(typeResolver, fieldOptions)(constructor.prototype, fieldName)
-
-            // Ensure property exists on prototype (only if not already from createZodDto)
-            if (!constructor.prototype.hasOwnProperty(fieldName)) {
-              Object.defineProperty(constructor.prototype, fieldName, {
-                enumerable: true,
-                configurable: true,
-                writable: true,
-                value: undefined
-              })
-            }
-
-            // Set design:type metadata for GraphQL
-            Reflect.defineMetadata('design:type', getReflectType(fieldType), constructor.prototype, fieldName)
-          }
-        }
-      } else if (!schema) {
-        console.warn(`@ZodObjectType: No schema found for class ${className}. Make sure to either provide a schema parameter or extend createZodDto.`)
-      }
-    } catch (error) {
-      console.warn('GraphQL decorators not available, falling back to createZodDto:', error)
-    }
+    // Apply GraphQL decorators
+    applyGraphQLDecorator(constructor, schema, className, false, finalOptions || {})
 
     // Handle ZodDto functionality and schema registration
     if (schema) {
-      // Register in global DTO registry for pre-registration
-      dtoClassRegistry.add(constructor)
       pendingDtoRegistrations.set(constructor, schema)
-
-      // 🎯 SIMPLE: Schedule field resolution
       scheduleFieldResolution()
-
-      // Immediate mapping for current usage
       schemaToClassMap.set(schema, constructor)
       classToSchemaMap.set(constructor, schema)
     }
@@ -244,27 +223,6 @@ export function ZodObjectType<
 }
 
 // @ZodInputType decorator following NestJS GraphQL @InputType pattern
-// Overload 1: With schema parameter
-export function ZodInputType<
-  TOutput = any,
-  TDef extends ZodTypeDef = ZodTypeDef,
-  TInput = TOutput
->(
-  schema: ZodSchema<TOutput, TDef, TInput>,
-  name?: string,
-  options?: ZodInputTypeOptions
-): <T extends new (...args: any[]) => any>(constructor: T) => T
-
-// Overload 2: Without schema parameter (for use with createZodDto inheritance)
-export function ZodInputType(
-  name?: string,
-  options?: ZodInputTypeOptions
-): <T extends new (...args: any[]) => any>(constructor: T) => T
-
-// Overload 3: No parameters (for use with createZodDto inheritance)
-export function ZodInputType(): <T extends new (...args: any[]) => any>(constructor: T) => T
-
-// Implementation
 export function ZodInputType<
   TOutput = any,
   TDef extends ZodTypeDef = ZodTypeDef,
@@ -281,12 +239,12 @@ export function ZodInputType<
     let finalOptions: ZodInputTypeOptions | undefined
 
     if (schemaOrName && typeof schemaOrName === 'object' && '_def' in schemaOrName) {
-      // Overload 1: schema provided
+      // Schema provided as first parameter
       schema = schemaOrName
       className = (typeof nameOrOptions === 'string' ? nameOrOptions : constructor.name)
       finalOptions = (typeof nameOrOptions === 'string' ? options : nameOrOptions as ZodInputTypeOptions)
     } else {
-      // Overload 2 & 3: no schema, try to extract from createZodDto inheritance
+      // No schema, try to extract from createZodDto inheritance
       className = (typeof schemaOrName === 'string' ? schemaOrName : constructor.name)
       if (typeof schemaOrName === 'string') {
         finalOptions = nameOrOptions as ZodInputTypeOptions | undefined
@@ -294,82 +252,20 @@ export function ZodInputType<
         finalOptions = schemaOrName as ZodInputTypeOptions | undefined
       }
 
-      // Try to extract schema from createZodDto inheritance
-      // Check multiple possible locations for the schema
+      // Extract schema from createZodDto inheritance
       schema = (constructor as any).schema ||
                (constructor as any).__zodSchema ||
-               // Check prototype chain for schema
                (constructor.prototype && constructor.prototype.constructor && constructor.prototype.constructor.schema) ||
-               // Check if class extends createZodDto by looking at prototype
                (Object.getPrototypeOf(constructor) && (Object.getPrototypeOf(constructor) as any).schema)
     }
 
-    try {
-      // Import NestJS GraphQL decorators
-      const graphqlModule = require('@nestjs/graphql')
-      const { InputType, Field } = graphqlModule
+    // Apply GraphQL decorators
+    applyGraphQLDecorator(constructor, schema, className, true, finalOptions || {})
 
-            // Apply the @InputType decorator first
-      InputType(className, {
-        description: finalOptions?.description
-      })(constructor)
-
-      // Apply @Field decorators to properties based on Zod schema
-      if (schema && (schema as any)._def.typeName === 'ZodObject') {
-        const shape = (schema as any)._def.shape()
-
-        for (const [fieldName, fieldSchema] of Object.entries<any>(shape)) {
-          const fieldType = getGraphQLFieldType(fieldSchema, true) // InputType context
-          if (fieldType) {
-            const isNullable = isFieldNullable(fieldSchema)
-            const description = (fieldSchema as any)._def?.description
-
-            const fieldOptions: any = {
-              nullable: isNullable
-            }
-            if (description) {
-              fieldOptions.description = description
-            }
-
-            // Apply Field decorator
-            // For object types (DTO classes), use the class directly
-            // For primitive types, wrap in a function
-            const typeResolver = (typeof fieldType === 'function' || fieldType.prototype) ?
-              () => fieldType :
-              () => fieldType
-            Field(typeResolver, fieldOptions)(constructor.prototype, fieldName)
-
-            // Ensure property exists on prototype (only if not already from createZodDto)
-            if (!constructor.prototype.hasOwnProperty(fieldName)) {
-              Object.defineProperty(constructor.prototype, fieldName, {
-                enumerable: true,
-                configurable: true,
-                writable: true,
-                value: undefined
-              })
-            }
-
-            // Set design:type metadata for GraphQL
-            Reflect.defineMetadata('design:type', getReflectType(fieldType), constructor.prototype, fieldName)
-          }
-        }
-      } else if (!schema) {
-        console.warn(`@ZodInputType: No schema found for class ${className}. Make sure to either provide a schema parameter or extend createZodDto.`)
-      }
-    } catch (error) {
-      console.warn('GraphQL decorators not available, falling back to createZodDto:', error)
-    }
-
-        // Handle ZodDto functionality and schema registration
+    // Handle ZodDto functionality and schema registration
     if (schema) {
-      // Register in global DTO registry for pre-registration
-      dtoClassRegistry.add(constructor)
       pendingDtoRegistrations.set(constructor, schema)
-
-      // 🎯 SIMPLE: Schedule field resolution
       scheduleFieldResolution()
-
-      // Immediate mapping for current usage
       schemaToClassMap.set(schema, constructor)
       classToSchemaMap.set(constructor, schema)
     }
@@ -378,54 +274,8 @@ export function ZodInputType<
   }
 }
 
-// Legacy: Class-based decorator for automatic ZodDto creation (deprecated in favor of @ZodObjectType/@ZodInputType)
-export function AutoZod<
-  TOutput = any,
-  TDef extends ZodTypeDef = ZodTypeDef,
-  TInput = TOutput
->(schema: ZodSchema<TOutput, TDef, TInput>, options?: CreateZodDtoOptions) {
-  return function<T extends new (...args: any[]) => any>(constructor: T): T {
-    // Get the class name automatically from the constructor
-    const className = constructor.name
-
-    // Auto-detect if this should be an InputType based on class name
-    const isInputType = options?.graphql?.isInput === true ||
-      className.toLowerCase().includes('input') ||
-      className.toLowerCase().includes('create') ||
-      className.toLowerCase().includes('update')
-
-    // Create enhanced options with auto-detected class name
-    const finalOptions: CreateZodDtoOptions = {
-      name: className,
-      ...options,
-      graphql: {
-        name: className,
-        isInput: isInputType,
-        autoFields: true,
-        ...options?.graphql
-      }
-    }
-
-    // Create the ZodDto with auto-detected options
-    const ZodDtoClass = createZodDto(schema, finalOptions)
-
-    // Copy all static methods from ZodDto to the original class
-    Object.setPrototypeOf(constructor, ZodDtoClass)
-    Object.assign(constructor, ZodDtoClass)
-
-    // Copy static properties
-    Object.getOwnPropertyNames(ZodDtoClass).forEach(name => {
-      if (name !== 'length' && name !== 'name' && name !== 'prototype') {
-        Object.defineProperty(constructor, name, Object.getOwnPropertyDescriptor(ZodDtoClass, name) || {})
-      }
-    })
-
-    return constructor as any
-  }
-}
 
 
-// Enhanced createZodDto with auto-naming capability
 export function createZodDto<
   TOutput = any,
   TDef extends ZodTypeDef = ZodTypeDef,
@@ -481,7 +331,7 @@ export function createZodDto<
         hasGraphQL = true
       }
     } catch (error) {
-      console.warn('GraphQL integration failed:', error)
+      // GraphQL integration failed
     }
   }
 
@@ -715,8 +565,6 @@ export function createZodDto<
     }
   }
 
-  // Register schema to class mapping
-  // This is now handled by delayedFieldResolutions
 
   // Store schema for backward compatibility
   ;(BaseZodDto as any).__zodSchema = schema
@@ -724,7 +572,6 @@ export function createZodDto<
   return BaseZodDto as unknown as ZodDto<TOutput, TDef, TInput>
 }
 
-// Helper function to get reflection type for primitive types
 function getReflectType(graphqlType: any): any {
   if (graphqlType === String) return String
   if (graphqlType === Number) return Number
@@ -734,7 +581,6 @@ function getReflectType(graphqlType: any): any {
   return Object
 }
 
-// Helper function to determine if field is nullable
 function isFieldNullable(fieldSchema: any): boolean {
   const typeName = fieldSchema._def.typeName
   return typeName === 'ZodOptional' ||
@@ -742,7 +588,6 @@ function isFieldNullable(fieldSchema: any): boolean {
          typeName === 'ZodDefault'
 }
 
-// Enhanced getGraphQLFieldType with lazy resolution
 function getGraphQLFieldType(fieldSchema: any, isInputContext = false): any {
   const typeName = fieldSchema._def.typeName
 
@@ -759,7 +604,7 @@ function getGraphQLFieldType(fieldSchema: any, isInputContext = false): any {
       const itemType = getGraphQLFieldType(fieldSchema._def.type, isInputContext)
       return itemType ? [itemType] : [String]
     case 'ZodObject':
-      // 🎯 NEW: Lazy resolution with context-aware type generation
+      // Handle nested objects
       return getOrCreateDtoClass(fieldSchema, isInputContext)
     case 'ZodOptional':
     case 'ZodNullable':
@@ -768,59 +613,21 @@ function getGraphQLFieldType(fieldSchema: any, isInputContext = false): any {
     case 'ZodEnum':
       return String // Enums as strings by default
     default:
-      console.warn(`Unsupported Zod type: ${typeName}, falling back to String`)
-      return String // Default to string
+      return String // Default fallback
   }
 }
 
-// 🎯 SMART: Automatic DTO discovery when used in resolvers/controllers
-const discoveredDtoFiles = new Set<string>()
 
-// 🎯 SMART: Auto-discover DTO file when a DTO class is actually used
-function discoverDtoFileFromUsage(dtoClassName: string): boolean {
-  if (discoveredDtoFiles.has(dtoClassName)) return true
-
-  try {
-    // Common DTO file patterns based on class name
-    const possiblePaths = [
-      `./src/**/${dtoClassName.toLowerCase().replace('dto', '')}.dto`,
-      `./src/**/${dtoClassName.toLowerCase()}`,
-      `./**/${dtoClassName.toLowerCase().replace('dto', '')}.dto`,
-      `./**/${dtoClassName.toLowerCase()}`
-    ]
-
-    for (const pattern of possiblePaths) {
-      try {
-        // Try to require the file
-        require.resolve(pattern)
-        require(pattern)
-        discoveredDtoFiles.add(dtoClassName)
-        console.log(`🔍 Auto-discovered DTO: ${dtoClassName} from ${pattern}`)
-        return true
-      } catch {
-        // Continue to next pattern
-      }
-    }
-  } catch (error) {
-    // File-based discovery failed, that's okay
-  }
-
-  return false
-}
-
-// 🎯 SMART: Enhanced getOrCreateDtoClass with auto-discovery
 function getOrCreateDtoClass(schema: ZodSchema<any>, isInputContext = false): any {
-  // 1. Direct lookup first (fastest path)
+  // 1. Direct lookup first
   let dtoClass = schemaToClassMap.get(schema)
   if (dtoClass) {
-    resolutionStats.directHits++
     return dtoClass
   }
 
   // 2. Search in pending registrations
   for (const [pendingClass, pendingSchema] of pendingDtoRegistrations.entries()) {
     if (pendingSchema === schema) {
-      resolutionStats.pendingMatches++
       // Found exact match - register it now
       schemaToClassMap.set(schema, pendingClass)
       classToSchemaMap.set(pendingClass, schema)
@@ -831,118 +638,54 @@ function getOrCreateDtoClass(schema: ZodSchema<any>, isInputContext = false): an
   // 3. Content-based matching for schemas with .describe() wrappers
   for (const [pendingClass, pendingSchema] of pendingDtoRegistrations.entries()) {
     if (schemasAreEquivalent(schema, pendingSchema)) {
-      resolutionStats.equivalentMatches++
-      console.log(`🔗 Found equivalent schema for ${pendingClass.name}`)
       schemaToClassMap.set(schema, pendingClass)
       return pendingClass
     }
   }
 
-  // 🎯 NEW: 4. Try to auto-discover DTO file based on schema metadata
-  const schemaDescription = (schema as any)._def?.description
-  if (schemaDescription) {
-    const possibleClassName = schemaDescription.replace(/\s+/g, '') + 'Dto'
-    if (discoverDtoFileFromUsage(possibleClassName)) {
-      // Try again after auto-discovery
-      dtoClass = schemaToClassMap.get(schema)
-      if (dtoClass) {
-        console.log(`✅ Successfully auto-discovered: ${possibleClassName}`)
-        return dtoClass
-      }
-    }
-  }
-
-  // 5. Auto-generate DTO class as last resort with correct type
-  resolutionStats.autoGenerated++
-  console.warn(`🚨 Auto-generating DTO class for unregistered ZodObject schema (${isInputContext ? 'InputType' : 'ObjectType'})`)
-
+  // 4. Auto-generate DTO class as last resort
   const autoDto = createZodDto(schema, {
     name: `AutoGenerated_${Date.now()}`,
     graphql: {
       autoFields: true,
-      isInput: isInputContext // 🎯 KEY: Use context to determine type
+      isInput: isInputContext
     }
   })
 
   return autoDto
 }
 
-// 🎯 NEW: Smart schema equivalence checking
 function schemasAreEquivalent(schema1: any, schema2: any): boolean {
   // Handle describe() wrappers
   const unwrap = (s: any) => s._def.innerType || s
   const s1 = unwrap(schema1)
   const s2 = unwrap(schema2)
 
-  // Simple reference equality after unwrapping
-  if (s1 === s2) return true
-
-  // Deep shape comparison for ZodObjects
-  if (s1._def?.typeName === 'ZodObject' && s2._def?.typeName === 'ZodObject') {
-    const shape1 = s1._def.shape()
-    const shape2 = s2._def.shape()
-    const keys1 = Object.keys(shape1).sort()
-    const keys2 = Object.keys(shape2).sort()
-
-    return JSON.stringify(keys1) === JSON.stringify(keys2)
-  }
-
-  return false
+  return s1 === s2
 }
 
-// 🎯 SIMPLIFIED: Much simpler pre-registration (now optional with lazy resolution)
 export function preRegisterAllDtos() {
   if (pendingDtoRegistrations.size === 0) {
-    console.log('✅ No pending DTOs to register (using lazy resolution)')
     return
   }
 
-  console.log(`📝 Pre-registering ${pendingDtoRegistrations.size} DTO classes...`)
-
-  // Simple batch registration - no complex nested resolution needed
+  // Simple batch registration
   for (const [dtoClass, schema] of pendingDtoRegistrations.entries()) {
     if (!schemaToClassMap.has(schema)) {
       schemaToClassMap.set(schema, dtoClass)
       classToSchemaMap.set(dtoClass, schema)
-      console.log(`✅ Registered: ${dtoClass.name}`)
     }
   }
 
   pendingDtoRegistrations.clear()
-  console.log('✅ Pre-registration completed')
 }
 
-// 🎯 SIMPLE: Manual trigger for the delayed resolution
 export function triggerDelayedResolution() {
-  console.log('🔄 Manually triggering delayed resolution...')
   scheduleFieldResolution()
 }
 
-// 🎯 SIMPLE: Much simpler solution - just delayed resolution
-// No file scanning, no complex discovery, just fix the timing issue
 
-// 🎯 NEW: Performance metrics
-let resolutionStats = {
-  directHits: 0,
-  pendingMatches: 0,
-  equivalentMatches: 0,
-  autoGenerated: 0
-}
 
-// 🎯 NEW: Get performance stats
-export function getDtoResolutionStats() {
-  return { ...resolutionStats }
-}
-
-// 🎯 NEW: Reset stats
-export function resetDtoResolutionStats() {
-  resolutionStats = {
-    directHits: 0,
-    pendingMatches: 0,
-    equivalentMatches: 0,
-    autoGenerated: 0
-  }
-}
 
 // Helper function to check if a class is a ZodDto
 export function isZodDto(metatype: any): metatype is ZodDto {
