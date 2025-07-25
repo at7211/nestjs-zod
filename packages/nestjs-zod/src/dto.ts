@@ -710,3 +710,6 @@ export function registerDtoMapping(dtoClass: any, schema: ZodSchema<any>) {
   schemaToClassMap.set(schema, dtoClass)
   classToSchemaMap.set(dtoClass, schema)
 }
+
+// Export internal functions for testing
+export { getGraphQLFieldType, isFieldNullable, getOrCreateDtoClass }

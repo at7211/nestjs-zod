@@ -20,3 +20,8 @@ dist
 package-lock.json
 /*.d.ts
 !z.d.ts
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output
