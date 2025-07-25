@@ -10,6 +10,7 @@ This example demonstrates the complete usage of `nestjs-zod` with both REST and 
 - 📝 **Automatic Descriptions**: Field descriptions from Zod `.describe()`
 - 🛡️ **Validation**: Request validation using Zod schemas
 - 📚 **Swagger Integration**: OpenAPI documentation generation
+- 🎨 **Enhanced GraphQL Enum Support**: Automatic enum type generation from Zod schemas
 
 ## Quick Start
 
@@ -22,9 +23,40 @@ $ pnpm run start:dev
 ```
 
 The application will be available at:
-- **REST API**: http://localhost:3000
-- **GraphQL Playground**: http://localhost:3000/graphql
-- **Swagger Docs**: http://localhost:3000/api
+- **REST API**: http://localhost:3001
+- **GraphQL Playground**: http://localhost:3001/graphql  
+- **Swagger Docs**: http://localhost:3001/api
+
+## 🎨 Enhanced GraphQL Enum Examples
+
+Check out the enhanced enum support in the [`src/enums/`](src/enums/) directory:
+
+- **Simple Enum Examples**: [`src/enums/simple-enum.dto.ts`](src/enums/simple-enum.dto.ts)
+- **GraphQL Resolvers**: [`src/enums/simple-enum.resolver.ts`](src/enums/simple-enum.resolver.ts)
+- **Usage Guide**: [`src/enums/README.md`](src/enums/README.md)
+
+**Try these enhanced enum queries:**
+```graphql
+# See the demo and available features
+query { simpleEnumDemo }
+
+# Query users with enum fields
+query {
+  simpleUsers {
+    role        # ADMIN | USER | GUEST
+    priority    # HIGH | MEDIUM | LOW
+  }
+}
+
+# Create user with enum validation
+mutation {
+  createSimpleUser(input: {
+    name: "Test User"
+    role: ADMIN
+    priority: HIGH
+  }) { id name role priority }
+}
+```
 
 ## Example Code
 
@@ -146,7 +178,7 @@ $ pnpm run test
 
 ## Testing GraphQL Queries
 
-Try these sample queries in GraphQL Playground at http://localhost:3000/graphql:
+Try these sample queries in GraphQL Playground at http://localhost:3001/graphql:
 
 ```graphql
 # Get all posts

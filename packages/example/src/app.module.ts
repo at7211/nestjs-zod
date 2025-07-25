@@ -10,6 +10,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PostsModule } from './posts/posts.module';
 import { HttpExceptionFilter } from './http-exception.filter';
+import { 
+  SimpleEnumUsersResolver, 
+  SimpleEnumTasksResolver,
+  SimpleEnumDemoResolver 
+} from './enums/simple-enum.resolver';
 
 @Module({
   imports: [
@@ -29,6 +34,10 @@ import { HttpExceptionFilter } from './http-exception.filter';
   controllers: [AppController],
   providers: [
     AppService,
+    // Simple Enhanced Enum Example Resolvers
+    SimpleEnumUsersResolver,
+    SimpleEnumTasksResolver,
+    SimpleEnumDemoResolver,
     {
       provide: APP_PIPE,
       useClass: ZodValidationPipe,

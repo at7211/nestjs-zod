@@ -1,4 +1,4 @@
-import { createZodDto, ZodObjectType, ZodInputType, getGraphQLFieldType, isFieldNullable, getOrCreateDtoClass } from './dto'
+import { createZodDto, ZodObjectType, ZodInputType, getGraphQLFieldType, isFieldNullable, getOrCreateDtoClass, clearEnumRegistry } from './dto'
 import { z } from 'zod'
 
 // Mock @nestjs/graphql module for testing
@@ -15,6 +15,7 @@ jest.mock('@nestjs/graphql', () => ({
 describe('GraphQL Field Type Mapping', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    clearEnumRegistry() // Clear enum registry between tests
   })
 
   describe('getGraphQLFieldType', () => {
@@ -70,7 +71,13 @@ describe('GraphQL Field Type Mapping', () => {
           values: ['A', 'B', 'C']
         }
       }
-      expect(getGraphQLFieldType(enumSchema)).toBe(String)
+      const result = getGraphQLFieldType(enumSchema)
+      // Should now return an enum object instead of String
+      expect(result).toEqual({
+        A: 'A',
+        B: 'B',
+        C: 'C'
+      })
     })
 
     it('should fall back to String for unknown types', () => {

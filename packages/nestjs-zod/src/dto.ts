@@ -611,12 +611,124 @@ function getGraphQLFieldType(fieldSchema: any, isInputContext = false): any {
     case 'ZodDefault':
       return getGraphQLFieldType(fieldSchema._def.innerType || fieldSchema._def.type, isInputContext)
     case 'ZodEnum':
-      return String // Enums as strings by default
+      return getOrCreateGraphQLEnum(fieldSchema)
+    case 'ZodNativeEnum':
+      return getOrCreateGraphQLEnum(fieldSchema)
+    case 'ZodUnion':
+      return handleUnionType(fieldSchema, isInputContext)
+    case 'ZodLiteral':
+      return getGraphQLFieldType({ _def: { typeName: typeof fieldSchema._def.value === 'string' ? 'ZodString' : 'ZodNumber' } }, isInputContext)
     default:
       return String // Default fallback
   }
 }
 
+
+// Registry for GraphQL enum types
+const enumTypeRegistry = new Map<string, any>()
+
+function getOrCreateGraphQLEnum(fieldSchema: any): any {
+  try {
+    const graphqlModule = require('@nestjs/graphql')
+    const { registerEnumType } = graphqlModule
+    
+    // Generate enum values
+    let enumValues: any
+    let enumName: string
+    
+    if (fieldSchema._def.typeName === 'ZodEnum') {
+      // Handle z.enum(['A', 'B', 'C'])
+      enumValues = fieldSchema._def.values
+      if (!enumValues || !Array.isArray(enumValues)) {
+        return String // Invalid enum schema
+      }
+      enumName = `Enum_${enumValues.join('_')}`
+    } else if (fieldSchema._def.typeName === 'ZodNativeEnum') {
+      // Handle native TypeScript enums
+      enumValues = fieldSchema._def.values
+      if (!enumValues) {
+        return String // Invalid enum schema
+      }
+      enumName = `NativeEnum_${Object.keys(enumValues).join('_')}`
+    } else {
+      return String // Fallback
+    }
+    
+    // Create a unique key for caching
+    const enumKey = Array.isArray(enumValues) ? enumValues.join('|') : Object.values(enumValues).join('|')
+    
+    // Check if we already created this enum type
+    if (enumTypeRegistry.has(enumKey)) {
+      return enumTypeRegistry.get(enumKey)
+    }
+    
+    // Create GraphQL enum object
+    const enumObject = Array.isArray(enumValues) 
+      ? enumValues.reduce((acc: any, value: string) => {
+          acc[value] = value
+          return acc
+        }, {})
+      : enumValues
+    
+    // Register with GraphQL (with error handling)
+    try {
+      if (registerEnumType) {
+        registerEnumType(enumObject, { name: enumName })
+      }
+    } catch (regError) {
+      // Registration failed but we can still return the enum object
+    }
+    
+    // Cache and return
+    enumTypeRegistry.set(enumKey, enumObject)
+    return enumObject
+    
+  } catch (error) {
+    // GraphQL not available, fallback to String
+    return String
+  }
+}
+
+function handleUnionType(fieldSchema: any, isInputContext = false): any {
+  try {
+    const options = fieldSchema._def.options
+    
+    // Handle empty options
+    if (!options || !Array.isArray(options) || options.length === 0) {
+      return String
+    }
+    
+    // Check if union is all literals (can be treated as enum)
+    const allLiterals = options.every((option: any) => option._def.typeName === 'ZodLiteral')
+    
+    if (allLiterals) {
+      // Create enum from union of literals
+      const values = options.map((option: any) => option._def.value)
+      const fakeEnumSchema = {
+        _def: {
+          typeName: 'ZodEnum',
+          values: values
+        }
+      }
+      return getOrCreateGraphQLEnum(fakeEnumSchema)
+    }
+    
+    // For non-literal unions, try to find a common type
+    const types = options.map((option: any) => getGraphQLFieldType(option, isInputContext))
+    const uniqueTypes = [...new Set(types)]
+    
+    // If all options resolve to the same GraphQL type, use that
+    if (uniqueTypes.length === 1) {
+      return uniqueTypes[0]
+    }
+    
+    // Mixed union types - fallback to String
+    return String
+    
+  } catch (error) {
+    return String // Fallback
+  }
+}
 
 function getOrCreateDtoClass(schema: ZodSchema<any>, isInputContext = false): any {
   // 1. Direct lookup first
@@ -711,5 +823,10 @@ export function registerDtoMapping(dtoClass: any, schema: ZodSchema<any>) {
   classToSchemaMap.set(dtoClass, schema)
 }
 
+// Helper function to clear enum registry (for testing)
+export function clearEnumRegistry() {
+  enumTypeRegistry.clear()
+}
+
 // Export internal functions for testing
-export { getGraphQLFieldType, isFieldNullable, getOrCreateDtoClass }
+export { getGraphQLFieldType, isFieldNullable, getOrCreateDtoClass, getOrCreateGraphQLEnum, handleUnionType }
